@@ -119,36 +119,6 @@ export default function EmailDetailPage() {
             className="space-y-4"
           />
         </div>
-
-        {/* Attachments Section matching Figma slide 4 */}
-        <div className="mt-8 pt-6 border-t border-gray-100">
-          <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
-            <Paperclip className="w-3.5 h-3.5" />
-            <span>Attachments (2)</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors shadow-2xs">
-              <div className="h-28 bg-gradient-to-tr from-sky-400 to-blue-600 flex items-center justify-center text-white font-medium text-xs">
-                🎾 Tennis_Coach_Profile.png
-              </div>
-              <div className="p-2.5 bg-white">
-                <p className="text-xs font-medium text-gray-800 truncate">Tennis_Coach_Profile.png</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">1.2 MB</p>
-              </div>
-            </div>
-
-            <div className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition-colors shadow-2xs">
-              <div className="h-28 bg-gradient-to-tr from-emerald-400 to-teal-600 flex items-center justify-center text-white font-medium text-xs">
-                🎾 Tennis_Coach_Profile2.png
-              </div>
-              <div className="p-2.5 bg-white">
-                <p className="text-xs font-medium text-gray-800 truncate">Tennis_Coach_Profile2.png</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">1.2 MB</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

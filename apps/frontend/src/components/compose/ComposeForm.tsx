@@ -46,6 +46,8 @@ export const ComposeForm: React.FC = () => {
   const [body, setBody] = useState<string>('');
   const [scheduledDate, setScheduledDate] = useState<Date>(new Date(Date.now() + 2 * 60 * 1000));
   const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
+  const [attachments, setAttachments] = useState<{ id: string; name: string; size: string }[]>([]);
+  const attachmentInputRef = React.useRef<HTMLInputElement>(null);
 
   // Auto-select first sender when loaded
   React.useEffect(() => {
@@ -180,13 +182,41 @@ export const ComposeForm: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Attachment counter */}
-          <div className="relative p-1.5 text-gray-500 hover:text-gray-900 cursor-pointer">
+          {/* Real attachment file picker */}
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            multiple
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                const newFiles = Array.from(e.target.files).map((f) => ({
+                  id: `${f.name}-${Date.now()}-${Math.random()}`,
+                  name: f.name,
+                  size:
+                    f.size > 1024 * 1024
+                      ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+                      : `${Math.round(f.size / 1024)} KB`,
+                }));
+                setAttachments((prev) => [...prev, ...newFiles]);
+                toast.success(`Attached ${newFiles.length} file(s)`);
+              }
+            }}
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => attachmentInputRef.current?.click()}
+            title="Attach files"
+            className="relative p-1.5 text-gray-500 hover:text-gray-900 cursor-pointer rounded-full hover:bg-gray-100 transition-colors"
+          >
             <Paperclip className="w-5 h-5" />
-            <span className="absolute -top-1 -right-1 text-[10px] bg-emerald-600 text-white font-bold rounded-full w-4 h-4 flex items-center justify-center">
-              1
-            </span>
-          </div>
+            {attachments.length > 0 && (
+              <span className="absolute -top-1 -right-1 text-[10px] bg-emerald-600 text-white font-bold rounded-full w-4 h-4 flex items-center justify-center animate-in zoom-in-50">
+                {attachments.length}
+              </span>
+            )}
+          </button>
 
           {/* Clock trigger for Send Later */}
           <button
@@ -377,6 +407,31 @@ export const ComposeForm: React.FC = () => {
             placeholder="Type Your Reply..."
             className="w-full flex-1 p-4 text-sm text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:border-[#029E4D] placeholder-gray-400 resize-none font-sans"
           />
+
+          {/* Attached Files List (if any attached) */}
+          {attachments.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {attachments.map((file) => (
+                <div
+                  key={file.id}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs font-medium text-gray-800"
+                >
+                  <Paperclip className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <span className="truncate max-w-[180px]">{file.name}</span>
+                  <span className="text-gray-400 text-[11px] shrink-0">({file.size})</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAttachments((prev) => prev.filter((f) => f.id !== file.id))
+                    }
+                    className="text-gray-400 hover:text-red-500 ml-1 rounded-full p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </form>
 
