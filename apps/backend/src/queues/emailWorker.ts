@@ -26,9 +26,9 @@ export function createEmailWorker(): Worker<EmailJobData> {
         return;
       }
 
-      // Idempotency: If already sent, do not send again
-      if (email.status === 'SENT') {
-        console.log(`[EmailWorker] Email ${emailId} is already marked as SENT. Skipping.`);
+      // Runnable state guard: Only process emails that are currently SCHEDULED or RATE_LIMITED
+      if (email.status !== 'SCHEDULED' && email.status !== 'RATE_LIMITED') {
+        console.log(`[EmailWorker] Email ${emailId} is not in runnable state (${email.status}). Skipping.`);
         return;
       }
 

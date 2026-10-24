@@ -50,6 +50,7 @@ export const ComposeForm: React.FC = () => {
   const [hourlyLimit, setHourlyLimit] = useState<number>(100);
   const [body, setBody] = useState<string>('');
   const [scheduledDate, setScheduledDate] = useState<Date>(new Date(Date.now() + 2 * 60 * 1000));
+  const [hasCustomSchedule, setHasCustomSchedule] = useState(false);
   const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -208,13 +209,15 @@ export const ComposeForm: React.FC = () => {
 
     // Check if there is any uncommitted text in recipientInput
     let finalRecipients = [...recipients];
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const trimmedInput = recipientInput.trim().replace(/[,;\s]/g, '');
-    if (trimmedInput && emailRegex.test(trimmedInput)) {
-      if (!finalRecipients.includes(trimmedInput)) {
-        finalRecipients.push(trimmedInput);
-        setRecipients(finalRecipients);
-      }
+    if (recipientInput.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const tokens = recipientInput.split(/[,;\s\n]+/).map((t) => t.trim()).filter(Boolean);
+      tokens.forEach((token) => {
+        if (emailRegex.test(token) && !finalRecipients.includes(token)) {
+          finalRecipients.push(token);
+        }
+      });
+      setRecipients(finalRecipients);
       setRecipientInput('');
     }
 
@@ -252,12 +255,22 @@ export const ComposeForm: React.FC = () => {
       return;
     }
 
-    // 3. Validate Scheduled Time: cannot be in the past (allowing 15s transit buffer)
+    // 3. Validate Scheduled Time
     const now = Date.now();
-    if (scheduledDate.getTime() < now - 15000) {
-      toast.error('Scheduled time cannot be in the past. Please select a future time via "Send Later".');
-      setIsSendLaterOpen(true);
-      return;
+    let effectiveScheduledDate = scheduledDate;
+    if (!hasCustomSchedule) {
+      // If user did not manually pick a custom schedule and the initial 2-minute default elapsed while writing
+      if (effectiveScheduledDate.getTime() <= now) {
+        effectiveScheduledDate = new Date(now + 2 * 60 * 1000);
+        setScheduledDate(effectiveScheduledDate);
+      }
+    } else {
+      // Custom schedule explicitly chosen: enforce future time (allowing 15s transit buffer)
+      if (effectiveScheduledDate.getTime() < now - 15000) {
+        toast.error('Selected scheduled time has already passed. Please select a future time via "Send Later".');
+        setIsSendLaterOpen(true);
+        return;
+      }
     }
 
     try {
@@ -266,7 +279,7 @@ export const ComposeForm: React.FC = () => {
         toAddresses: finalRecipients,
         subject: subject.trim(),
         body: currentHtml.trim(),
-        scheduledAt: scheduledDate.toISOString(),
+        scheduledAt: effectiveScheduledDate.toISOString(),
         delaySeconds: Math.max(1, Math.min(3600, Math.floor(Number(delaySeconds) || 2))),
         hourlyLimit: Math.max(1, Math.min(2000, Math.floor(Number(hourlyLimit) || 100))),
         attachments: attachments.map((a) => ({
@@ -307,8 +320,40 @@ export const ComposeForm: React.FC = () => {
             onChange={async (e) => {
               if (e.target.files && e.target.files.length > 0) {
                 const files = Array.from(e.target.files);
+                const maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+                const maxTotalBytes = 10 * 1024 * 1024; // 10 MB
+
+                // Filter files that exceed single limit
+                const validFiles: File[] = [];
+                for (const file of files) {
+                  if (file.size > maxFileSizeBytes) {
+                    toast.error(`File "${file.name}" exceeds the 5MB attachment limit and was skipped.`);
+                  } else {
+                    validFiles.push(file);
+                  }
+                }
+
+                if (validFiles.length === 0) {
+                  e.target.value = '';
+                  return;
+                }
+
+                // Check total size
+                const currentTotalSize = attachments.reduce((acc, att) => {
+                  const sizeStr = att.size || '0 KB';
+                  const num = parseFloat(sizeStr) || 0;
+                  return acc + (sizeStr.includes('MB') ? num * 1024 * 1024 : num * 1024);
+                }, 0);
+                const incomingTotalSize = validFiles.reduce((acc, f) => acc + f.size, 0);
+
+                if (currentTotalSize + incomingTotalSize > maxTotalBytes) {
+                  toast.error('Total attachments exceed the 10MB limit. Please remove some files.');
+                  e.target.value = '';
+                  return;
+                }
+
                 const loaded = await Promise.all(
-                  files.map((file) => {
+                  validFiles.map((file) => {
                     return new Promise<Attachment>((resolve) => {
                       const reader = new FileReader();
                       reader.onload = () => {
@@ -328,7 +373,7 @@ export const ComposeForm: React.FC = () => {
                   })
                 );
                 setAttachments((prev) => [...prev, ...loaded]);
-                toast.success(`Attached ${files.length} file(s)`);
+                toast.success(`Attached ${validFiles.length} file(s)`);
                 // Clear input so same file can be selected again if needed
                 e.target.value = '';
               }
@@ -378,7 +423,7 @@ export const ComposeForm: React.FC = () => {
         {/* From Row */}
         <div className="flex items-center py-2.5 border-b border-gray-100">
           <label className="w-20 text-sm font-medium text-gray-500">From</label>
-          <div className="relative flex-1">
+          <div className="relative inline-block">
             <select
               value={selectedSenderId}
               onChange={(e) => setSelectedSenderId(e.target.value)}
@@ -390,7 +435,7 @@ export const ComposeForm: React.FC = () => {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute left-52 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
@@ -874,6 +919,7 @@ export const ComposeForm: React.FC = () => {
         selectedDate={scheduledDate}
         onConfirm={(newDate) => {
           setScheduledDate(newDate);
+          setHasCustomSchedule(true);
           toast.info(`Scheduling time updated to: ${newDate.toLocaleString()}`);
         }}
       />

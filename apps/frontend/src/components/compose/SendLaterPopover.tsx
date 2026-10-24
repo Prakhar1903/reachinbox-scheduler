@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock, X, AlertCircle } from 'lucide-react';
 import { format, addDays, setHours, setMinutes, setSeconds, addMinutes } from 'date-fns';
 import { Button } from '../ui/Button';
@@ -19,32 +19,53 @@ export const SendLaterPopover: React.FC<SendLaterPopoverProps> = ({
   selectedDate,
   onConfirm,
 }) => {
-  // Ensure default is always at least 2 minutes in future
-  const initialDate = selectedDate.getTime() > Date.now() ? selectedDate : addMinutes(new Date(), 2);
-  const [tempDate, setTempDate] = useState<Date>(initialDate);
+  const getSafeInitialDate = (date: Date) => {
+    if (date instanceof Date && !isNaN(date.getTime()) && date.getTime() > Date.now()) {
+      return date;
+    }
+    return addMinutes(new Date(), 2);
+  };
+
+  const [tempDate, setTempDate] = useState<Date>(() => getSafeInitialDate(selectedDate));
+
+  // Sync tempDate whenever the popover is opened or selectedDate changes
+  useEffect(() => {
+    if (isOpen) {
+      setTempDate(getSafeInitialDate(selectedDate));
+    }
+  }, [isOpen, selectedDate]);
 
   if (!isOpen) return null;
 
   const now = new Date();
-  const isPast = tempDate.getTime() <= now.getTime();
+  const isValidDate = tempDate instanceof Date && !isNaN(tempDate.getTime());
+  const isPast = !isValidDate || tempDate.getTime() <= now.getTime();
 
-  const handlePreset = (targetDate: Date) => {
-    setTempDate(targetDate);
+  const handlePreset = (presetFn: () => Date) => {
+    setTempDate(presetFn());
   };
 
-  const tomorrow = addDays(new Date(), 1);
-  const tomorrow10am = setSeconds(setMinutes(setHours(tomorrow, 10), 0), 0);
-  const tomorrow11am = setSeconds(setMinutes(setHours(tomorrow, 11), 0), 0);
-  const tomorrow3pm = setSeconds(setMinutes(setHours(tomorrow, 15), 0), 0);
-  const testIn2Minutes = addMinutes(new Date(), 2);
+  const getTomorrow10am = () => {
+    const tomorrow = addDays(new Date(), 1);
+    return setSeconds(setMinutes(setHours(tomorrow, 10), 0), 0);
+  };
+  const getTomorrow11am = () => {
+    const tomorrow = addDays(new Date(), 1);
+    return setSeconds(setMinutes(setHours(tomorrow, 11), 0), 0);
+  };
+  const getTomorrow3pm = () => {
+    const tomorrow = addDays(new Date(), 1);
+    return setSeconds(setMinutes(setHours(tomorrow, 15), 0), 0);
+  };
+  const getTestIn2Minutes = () => addMinutes(new Date(), 2);
 
-  // Format for HTML datetime-local input
-  const formattedInputValue = format(tempDate, "yyyy-MM-dd'T'HH:mm");
+  // Format for HTML datetime-local input safely
+  const formattedInputValue = isValidDate ? format(tempDate, "yyyy-MM-dd'T'HH:mm") : '';
   const minAllowedDateTime = format(now, "yyyy-MM-dd'T'HH:mm");
 
   const handleDone = () => {
     const currentNow = Date.now();
-    if (tempDate.getTime() <= currentNow) {
+    if (!isValidDate || tempDate.getTime() <= currentNow) {
       toast.error('Scheduled time cannot be in the past. Please pick a future date and time.');
       return;
     }
@@ -78,7 +99,9 @@ export const SendLaterPopover: React.FC<SendLaterPopoverProps> = ({
               onChange={(e) => {
                 if (e.target.value) {
                   const chosen = new Date(e.target.value);
-                  setTempDate(chosen);
+                  if (!isNaN(chosen.getTime())) {
+                    setTempDate(chosen);
+                  }
                 }
               }}
               className={`w-full bg-[#F4F5F7] border rounded-xl px-3.5 py-2.5 text-sm text-gray-900 focus:bg-white focus:outline-none transition-colors ${
@@ -100,20 +123,20 @@ export const SendLaterPopover: React.FC<SendLaterPopoverProps> = ({
         <div className="mt-4 space-y-1">
           <button
             type="button"
-            onClick={() => handlePreset(testIn2Minutes)}
+            onClick={() => handlePreset(getTestIn2Minutes)}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-[#029E4D] font-medium hover:bg-emerald-50 transition-colors flex items-center justify-between cursor-pointer"
           >
             <span className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-[#029E4D]" /> In 2 Minutes (Fast Test)
             </span>
             <span className="text-xs text-emerald-600">
-              {format(testIn2Minutes, 'h:mm a')}
+              {format(getTestIn2Minutes(), 'h:mm a')}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => handlePreset(tomorrow10am)}
+            onClick={() => handlePreset(getTomorrow10am)}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-between cursor-pointer"
           >
             <span>Tomorrow, 10:00 AM</span>
@@ -122,7 +145,7 @@ export const SendLaterPopover: React.FC<SendLaterPopoverProps> = ({
 
           <button
             type="button"
-            onClick={() => handlePreset(tomorrow11am)}
+            onClick={() => handlePreset(getTomorrow11am)}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-between cursor-pointer"
           >
             <span>Tomorrow, 11:00 AM</span>
@@ -131,7 +154,7 @@ export const SendLaterPopover: React.FC<SendLaterPopoverProps> = ({
 
           <button
             type="button"
-            onClick={() => handlePreset(tomorrow3pm)}
+            onClick={() => handlePreset(getTomorrow3pm)}
             className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-between cursor-pointer"
           >
             <span>Tomorrow, 3:00 PM</span>

@@ -267,6 +267,11 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
 
 // 5. Logout
 authRouter.post('/logout', (_req: Request, res: Response) => {
-  res.clearCookie('jwt');
+  const isProd = env.NODE_ENV === 'production';
+  res.clearCookie('jwt', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+  });
   return res.json({ message: 'Logged out successfully' });
 });

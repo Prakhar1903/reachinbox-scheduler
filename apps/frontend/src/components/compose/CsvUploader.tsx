@@ -16,30 +16,34 @@ export const CsvUploader: React.FC<CsvUploaderProps> = ({ onEmailsExtracted }) =
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('CSV file exceeds 5MB size limit.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     Papa.parse(file, {
       complete: (results) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const extracted: string[] = [];
 
+        const processCell = (raw: any) => {
+          if (typeof raw !== 'string') return;
+          let cell = raw.trim().replace(/^["']|["']$/g, '');
+          const angleMatch = cell.match(/<([^>]+)>/);
+          if (angleMatch) {
+            cell = angleMatch[1].trim();
+          }
+          if (emailRegex.test(cell)) {
+            extracted.push(cell.toLowerCase());
+          }
+        };
+
         results.data.forEach((row: any) => {
           if (Array.isArray(row)) {
-            row.forEach((cell) => {
-              if (typeof cell === 'string') {
-                const cleaned = cell.trim();
-                if (emailRegex.test(cleaned)) {
-                  extracted.push(cleaned);
-                }
-              }
-            });
+            row.forEach(processCell);
           } else if (typeof row === 'object' && row !== null) {
-            Object.values(row).forEach((val: any) => {
-              if (typeof val === 'string') {
-                const cleaned = val.trim();
-                if (emailRegex.test(cleaned)) {
-                  extracted.push(cleaned);
-                }
-              }
-            });
+            Object.values(row).forEach(processCell);
           }
         });
 

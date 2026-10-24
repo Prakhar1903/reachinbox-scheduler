@@ -15,6 +15,9 @@ export function useAuth() {
         const urlToken = urlParams.get('token');
         if (urlToken) {
           localStorage.setItem('auth_token', urlToken);
+          // Strip sensitive token from URL address bar for security
+          const cleanUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
         }
       }
       try {

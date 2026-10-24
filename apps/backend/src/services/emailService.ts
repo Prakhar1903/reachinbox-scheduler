@@ -16,6 +16,9 @@ function getTransporter(sender: Sender): Transporter {
       user: sender.smtpUser,
       pass: sender.smtpPass,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
   transporterMap.set(sender.id, transporter);
