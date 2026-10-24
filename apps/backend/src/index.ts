@@ -88,16 +88,18 @@ async function bootstrap() {
     workerInstance = createEmailWorker();
     console.log(`[Worker] Started BullMQ worker with concurrency=${env.WORKER_CONCURRENCY}`);
 
-    // 4. Recover any scheduled/rate-limited emails (idempotent restart safety)
-    await recoverPendingScheduledEmails();
-
-    // 5. Start Express server
+    // 4. Start Express server immediately
     const server = app.listen(env.PORT, () => {
       console.log(`\n======================================================`);
       console.log(`✨ Backend API running at http://localhost:${env.PORT}`);
       console.log(`📊 Bull Board UI running at http://localhost:${env.PORT}/admin/queues`);
       console.log(`⚡ Health probe at http://localhost:${env.PORT}/health`);
       console.log(`======================================================\n`);
+    });
+
+    // 5. Recover any scheduled/rate-limited emails (idempotent restart safety) in background
+    recoverPendingScheduledEmails().catch((err) => {
+      console.error('[Recovery] Background recovery error:', err);
     });
 
     // Graceful Shutdown
