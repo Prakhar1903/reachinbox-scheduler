@@ -183,3 +183,90 @@ emailsRouter.get('/:id', requireAuth, async (req: Request, res: Response) => {
     return res.status(500).json({ error: error.message });
   }
 });
+
+// 5. Toggle Star Email
+emailsRouter.patch('/:id/star', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const email = await prisma.email.findFirst({
+      where: { id: req.params.id, userId },
+    });
+    if (!email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+    const updated = await prisma.email.update({
+      where: { id: email.id },
+      data: { isStarred: !email.isStarred },
+    });
+    return res.json({ isStarred: updated.isStarred });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Toggle Archive Email
+emailsRouter.patch('/:id/archive', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const email = await prisma.email.findFirst({
+      where: { id: req.params.id, userId },
+    });
+    if (!email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+    const updated = await prisma.email.update({
+      where: { id: email.id },
+      data: { isArchived: !email.isArchived },
+    });
+    return res.json({ isArchived: updated.isArchived });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// 7. Delete Email
+emailsRouter.delete('/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const email = await prisma.email.findFirst({
+      where: { id: req.params.id, userId },
+    });
+    if (!email) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    // Remove from BullMQ queue if pending
+    if (email.status === 'SCHEDULED' || email.status === 'RATE_LIMITED') {
+      try {
+        const { emailQueue } = await import('../queues/emailQueue');
+        const jobId = email.bullJobId || email.id;
+        const job = await emailQueue.getJob(jobId);
+        if (job) {
+          await job.remove();
+        }
+      } catch (queueErr) {
+        console.warn('[Queue Remove Warning]:', queueErr);
+      }
+    }
+
+    // Remove from Elasticsearch
+    try {
+      const { esClient, EMAILS_INDEX } = await import('../config/elasticsearch');
+      await esClient.delete({
+        index: EMAILS_INDEX,
+        id: email.id,
+      });
+    } catch (esErr) {
+      // safe ignore
+    }
+
+    // Remove from database
+    await prisma.email.delete({
+      where: { id: email.id },
+    });
+
+    return res.json({ success: true, message: 'Email deleted successfully' });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});

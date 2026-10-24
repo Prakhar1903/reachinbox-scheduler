@@ -5,16 +5,32 @@ import Link from 'next/link';
 import { Star, ExternalLink } from 'lucide-react';
 import { EmailItem } from '@/types';
 import { Badge } from '../ui/Badge';
+import { useToggleStarEmail } from '@/hooks/useEmails';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface EmailRowProps {
   email: EmailItem;
 }
 
 export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
+  const toggleStarMutation = useToggleStarEmail();
+
   const plainBodyExcerpt = (email.body || '')
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const handleToggleStar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      const res = await toggleStarMutation.mutateAsync(email.id);
+      toast.success(res.isStarred ? 'Email starred' : 'Email unstarred');
+    } catch {
+      toast.error('Failed to toggle star');
+    }
+  };
 
   return (
     <div className="group border-b border-[#F0F2F5] hover:bg-[#F9FAFB] transition-colors flex items-center px-6 py-3.5 gap-4 cursor-pointer text-sm">
@@ -64,13 +80,15 @@ export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
 
       {/* Star button */}
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-        }}
-        className="text-gray-300 hover:text-amber-400 p-1 shrink-0 transition-colors"
+        type="button"
+        onClick={handleToggleStar}
+        disabled={toggleStarMutation.isPending}
+        className={cn(
+          'p-1 shrink-0 transition-colors',
+          email.isStarred ? 'text-amber-400' : 'text-gray-300 hover:text-amber-400'
+        )}
       >
-        <Star className="w-4 h-4" />
+        <Star className={cn('w-4 h-4', email.isStarred && 'fill-amber-400')} />
       </button>
     </div>
   );

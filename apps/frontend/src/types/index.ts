@@ -32,6 +32,8 @@ export interface EmailItem {
   delaySeconds: number;
   hourlyLimit: number;
   retryCount: number;
+  isStarred?: boolean;
+  isArchived?: boolean;
   errorMessage?: string | null;
   createdAt: string;
   sender?: Sender;

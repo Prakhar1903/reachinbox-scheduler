@@ -2,16 +2,27 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, Star, Trash2, Archive, ExternalLink, Paperclip, ChevronDown } from 'lucide-react';
-import { useEmailDetail } from '@/hooks/useEmails';
-import { formatFullDate } from '@/lib/utils';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Star, Trash2, Archive, ExternalLink, ChevronDown } from 'lucide-react';
+import {
+  useEmailDetail,
+  useToggleStarEmail,
+  useToggleArchiveEmail,
+  useDeleteEmail,
+} from '@/hooks/useEmails';
+import { formatFullDate, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
+import { toast } from 'sonner';
 
 export default function EmailDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
   const { data: email, isLoading, error } = useEmailDetail(id);
+
+  const toggleStarMutation = useToggleStarEmail();
+  const toggleArchiveMutation = useToggleArchiveEmail();
+  const deleteEmailMutation = useDeleteEmail();
 
   if (isLoading) {
     return (
@@ -34,6 +45,36 @@ export default function EmailDetailPage() {
 
   const senderInitial = (email.sender?.name || email.sender?.address || 'S').charAt(0).toUpperCase();
 
+  const handleStar = async () => {
+    try {
+      const res = await toggleStarMutation.mutateAsync(email.id);
+      toast.success(res.isStarred ? 'Email starred' : 'Email unstarred');
+    } catch {
+      toast.error('Failed to update star');
+    }
+  };
+
+  const handleArchive = async () => {
+    try {
+      const res = await toggleArchiveMutation.mutateAsync(email.id);
+      toast.success(res.isArchived ? 'Email moved to archive' : 'Email restored from archive');
+    } catch {
+      toast.error('Failed to archive email');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (confirm('Are you sure you want to delete this email?')) {
+      try {
+        await deleteEmailMutation.mutateAsync(email.id);
+        toast.success('Email deleted successfully');
+        router.push('/dashboard');
+      } catch {
+        toast.error('Failed to delete email');
+      }
+    }
+  };
+
   return (
     <div className="flex-1 bg-white flex flex-col min-h-screen">
       {/* Top Header matching Figma slide 4 */}
@@ -51,13 +92,39 @@ export default function EmailDetailPage() {
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
-          <button className="p-2 text-gray-400 hover:text-amber-400 rounded-full hover:bg-gray-50 transition-colors">
-            <Star className="w-4 h-4" />
+          {/* Star Button */}
+          <button
+            onClick={handleStar}
+            disabled={toggleStarMutation.isPending}
+            title={email.isStarred ? 'Starred' : 'Star email'}
+            className={cn(
+              'p-2 rounded-full hover:bg-gray-100 transition-colors',
+              email.isStarred ? 'text-amber-400' : 'text-gray-400 hover:text-amber-400'
+            )}
+          >
+            <Star className={cn('w-4 h-4', email.isStarred && 'fill-amber-400')} />
           </button>
-          <button className="p-2 text-gray-400 hover:text-gray-700 rounded-full hover:bg-gray-50 transition-colors">
+
+          {/* Archive Button */}
+          <button
+            onClick={handleArchive}
+            disabled={toggleArchiveMutation.isPending}
+            title={email.isArchived ? 'Archived' : 'Archive email'}
+            className={cn(
+              'p-2 rounded-full hover:bg-gray-100 transition-colors',
+              email.isArchived ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 hover:text-gray-700'
+            )}
+          >
             <Archive className="w-4 h-4" />
           </button>
-          <button className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-gray-50 transition-colors">
+
+          {/* Delete Button */}
+          <button
+            onClick={handleDelete}
+            disabled={deleteEmailMutation.isPending}
+            title="Delete email"
+            className="p-2 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+          >
             <Trash2 className="w-4 h-4" />
           </button>
 

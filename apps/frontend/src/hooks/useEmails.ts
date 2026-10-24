@@ -63,3 +63,47 @@ export function useScheduleEmails() {
     },
   });
 }
+
+export function useToggleStarEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      const res = await api.patch<{ isStarred: boolean }>(`/api/emails/${emailId}/star`);
+      return res.data;
+    },
+    onSuccess: (_, emailId) => {
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+      queryClient.invalidateQueries({ queryKey: ['emailDetail', emailId] });
+    },
+  });
+}
+
+export function useToggleArchiveEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      const res = await api.patch<{ isArchived: boolean }>(`/api/emails/${emailId}/archive`);
+      return res.data;
+    },
+    onSuccess: (_, emailId) => {
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+      queryClient.invalidateQueries({ queryKey: ['emailDetail', emailId] });
+    },
+  });
+}
+
+export function useDeleteEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (emailId: string) => {
+      const res = await api.delete(`/api/emails/${emailId}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['emails'] });
+    },
+  });
+}

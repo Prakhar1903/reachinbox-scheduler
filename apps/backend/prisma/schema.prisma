@@ -61,6 +61,8 @@ model Email {
   delaySeconds Int         @default(2)
   retryCount   Int         @default(0)
   errorMessage String?     @db.Text
+  isStarred    Boolean     @default(false)
+  isArchived   Boolean     @default(false)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
