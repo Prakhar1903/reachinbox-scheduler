@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import jwt from 'jsonwebtoken';
@@ -41,10 +41,11 @@ if (hasGoogleCreds) {
 
           return done(null, {
             userId: user.id,
+            id: user.id,
             email: user.email,
             name: user.name,
             avatarUrl: user.avatarUrl,
-          });
+          } as any);
         } catch (error) {
           return done(error as Error, undefined);
         }
@@ -54,7 +55,7 @@ if (hasGoogleCreds) {
 }
 
 // 1. Initiate Google Login
-authRouter.get('/google', (req: Request, res: Response, next) => {
+authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
   if (hasGoogleCreds) {
     passport.authenticate('google', {
       scope: ['profile', 'email'],
@@ -62,7 +63,6 @@ authRouter.get('/google', (req: Request, res: Response, next) => {
     })(req, res, next);
   } else {
     // Graceful fallback for local development without pre-configured GCP credentials
-    // Matches Oliver Brown in the Figma mockups!
     const mockGoogleId = 'google_1092837465928374';
     const email = 'oliver.brown@domain.io';
     const name = 'Oliver Brown';
@@ -97,18 +97,20 @@ authRouter.get('/google', (req: Request, res: Response, next) => {
 // 2. Google OAuth Callback
 authRouter.get(
   '/google/callback',
-  (req: Request, res: Response, next) => {
+  (req: Request, res: Response, next: NextFunction) => {
     if (!hasGoogleCreds) {
       return res.redirect(`${env.FRONTEND_URL}/dashboard`);
     }
 
     passport.authenticate('google', { session: false }, (err, user) => {
       if (err || !user) {
+        console.error('[Google OAuth] Authentication failed:', err);
         return res.redirect(`${env.FRONTEND_URL}/login?error=oauth_failed`);
       }
 
+      const userId = (user as any).userId || (user as any).id;
       const token = jwt.sign(
-        { userId: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
+        { userId, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
         env.JWT_SECRET,
         { expiresIn: '7d' }
       );
@@ -120,65 +122,79 @@ authRouter.get(
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      res.redirect(`${env.FRONTEND_URL}/dashboard?token=${token}`);
+      return res.redirect(`${env.FRONTEND_URL}/dashboard?token=${token}`);
     })(req, res, next);
   }
 );
 
 // 3. Demo Login Route for quick testing (matches Figma default user)
-authRouter.post('/demo-login', async (_req: Request, res: Response) => {
-  const mockGoogleId = 'google_1092837465928374';
-  const email = 'oliver.brown@domain.io';
-  const name = 'Oliver Brown';
-  const avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+authRouter.post('/demo-login', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const mockGoogleId = 'google_1092837465928374';
+    const email = 'oliver.brown@domain.io';
+    const name = 'Oliver Brown';
+    const avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
 
-  const user = await prisma.user.upsert({
-    where: { googleId: mockGoogleId },
-    update: { name, email, avatarUrl },
-    create: { googleId: mockGoogleId, email, name, avatarUrl },
-  });
+    const user = await prisma.user.upsert({
+      where: { googleId: mockGoogleId },
+      update: { name, email, avatarUrl },
+      create: { googleId: mockGoogleId, email, name, avatarUrl },
+    });
 
-  const token = jwt.sign(
-    { userId: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
-    env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl },
+      env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-  res.cookie('jwt', token, {
-    httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
-  return res.json({ token, user });
+    return res.json({ token, user });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // 4. Get Current User (/auth/me)
 authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.userId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      avatarUrl: true,
-      slackTeamId: true,
-      slackChannelId: true,
-      createdAt: true,
-    },
-  });
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized: missing userId in token' });
+    }
 
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        slackTeamId: true,
+        slackChannelId: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    return res.json({
+      user: {
+        ...user,
+        hasSlackConnected: Boolean(user.slackChannelId || user.slackTeamId),
+      },
+    });
+  } catch (error: any) {
+    console.error('[/auth/me error]:', error);
+    return res.status(500).json({ error: error?.message || 'Failed to fetch user' });
   }
-
-  return res.json({
-    user: {
-      ...user,
-      hasSlackConnected: Boolean(user.slackChannelId || user.slackTeamId),
-    },
-  });
 });
 
 // 5. Logout

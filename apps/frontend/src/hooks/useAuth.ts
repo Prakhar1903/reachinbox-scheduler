@@ -10,6 +10,13 @@ export function useAuth() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['authUser'],
     queryFn: async () => {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token');
+        if (urlToken) {
+          localStorage.setItem('auth_token', urlToken);
+        }
+      }
       try {
         const res = await api.get<{ user: User }>('/auth/me');
         return res.data.user;
@@ -20,7 +27,7 @@ export function useAuth() {
         throw err;
       }
     },
-    retry: false,
+    retry: 1,
     staleTime: 5 * 60 * 1000,
   });
 

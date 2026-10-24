@@ -1,21 +1,25 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Sidebar } from '@/components/layout/Sidebar';
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
+    // Only redirect if query is completely done loading and definitely not authenticated
     if (!isLoading && !isAuthenticated) {
-      router.push('/login');
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (!urlParams.get('token')) {
+          router.push('/login');
+        }
+      } else {
+        router.push('/login');
+      }
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -37,5 +41,23 @@ export default function DashboardLayout({
         {children}
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#FAFBFC]">
+          <div className="w-8 h-8 border-3 border-[#029E4D] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <DashboardShell>{children}</DashboardShell>
+    </Suspense>
   );
 }
