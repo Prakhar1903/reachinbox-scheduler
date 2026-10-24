@@ -11,6 +11,8 @@ export function useEmails(status: 'SCHEDULED' | 'SENT' | 'ALL' = 'SCHEDULED', pa
       });
       return res.data;
     },
+    staleTime: 3000,
+    placeholderData: (prev) => prev,
     refetchInterval: 5000, // Live poll every 5s for scheduler status transitions
   });
 }

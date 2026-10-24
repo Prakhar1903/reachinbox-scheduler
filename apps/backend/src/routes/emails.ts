@@ -149,37 +149,64 @@ emailsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       }
     }
 
-    const [emails, totalCount, scheduledCount, sentCount] = await Promise.all([
+    const [emails, statusGroups] = await Promise.all([
       prisma.email.findMany({
         where,
-        include: { sender: true },
+        select: {
+          id: true,
+          toAddress: true,
+          subject: true,
+          body: true,
+          status: true,
+          scheduledAt: true,
+          sentAt: true,
+          etherealUrl: true,
+          isStarred: true,
+          isArchived: true,
+          createdAt: true,
+          sender: {
+            select: {
+              id: true,
+              address: true,
+              name: true,
+            },
+          },
+        },
         orderBy: { scheduledAt: 'desc' },
         skip,
         take,
       }),
-      prisma.email.count({ where }),
-      prisma.email.count({
-        where: {
-          userId,
-          status: { in: ['SCHEDULED', 'RATE_LIMITED', 'SENDING'] },
-        },
-      }),
-      prisma.email.count({
-        where: { userId, status: 'SENT' },
+      prisma.email.groupBy({
+        by: ['status'],
+        where: { userId },
+        _count: true,
       }),
     ]);
 
-    // Optimize payload: Strip heavy base64 dataUrl from attachments in list view
-    const lightweightEmails = emails.map((e) => {
-      const sanitizedAttachments = Array.isArray(e.attachments)
-        ? (e.attachments as any[]).map((att) => ({
-            id: att.id,
-            filename: att.filename,
-            size: att.size,
-            contentType: att.contentType,
-          }))
-        : undefined;
+    const statusCounts: Record<string, number> = {};
+    statusGroups.forEach((g) => {
+      statusCounts[g.status] = g._count;
+    });
 
+    const scheduledCount =
+      (statusCounts['SCHEDULED'] || 0) +
+      (statusCounts['RATE_LIMITED'] || 0) +
+      (statusCounts['SENDING'] || 0);
+    const sentCount = statusCounts['SENT'] || 0;
+
+    let totalCount = 0;
+    if (!status || status === 'ALL') {
+      totalCount = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    } else if (status === 'SCHEDULED') {
+      totalCount = scheduledCount;
+    } else if (status === 'SENT') {
+      totalCount = sentCount;
+    } else {
+      totalCount = statusCounts[String(status)] || 0;
+    }
+
+    // Clean excerpt: Strip any heavy inline base64 if present in body
+    const lightweightEmails = emails.map((e) => {
       let sanitizedBody = e.body;
       if (sanitizedBody && sanitizedBody.includes(';base64,')) {
         sanitizedBody = sanitizedBody.replace(/data:[^;]+;base64,[^"']+/g, '[Image]');
@@ -188,7 +215,6 @@ emailsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       return {
         ...e,
         body: sanitizedBody,
-        attachments: sanitizedAttachments,
       };
     });
 
