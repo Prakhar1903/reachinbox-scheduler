@@ -54,15 +54,33 @@ if (hasGoogleCreds) {
   );
 }
 
+function getTargetFrontend(req: Request): string {
+  const queryRedirect = req.query.redirect as string | undefined;
+  if (queryRedirect && (queryRedirect.startsWith('http://') || queryRedirect.startsWith('https://'))) {
+    return queryRedirect.replace(/\/+$/, '');
+  }
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      return new URL(referer).origin.replace(/\/+$/, '');
+    } catch {}
+  }
+  return env.FRONTEND_URL.replace(/\/+$/, '');
+}
+
 // 1. Initiate Google Login
 authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
-  if (hasGoogleCreds) {
+  const targetFrontend = getTargetFrontend(req);
+
+  // If GCP credentials are provided AND GOOGLE_CALLBACK_URL is set to a real public host
+  if (hasGoogleCreds && env.GOOGLE_CALLBACK_URL && !env.GOOGLE_CALLBACK_URL.includes('localhost')) {
     passport.authenticate('google', {
       scope: ['profile', 'email'],
       session: false,
+      state: targetFrontend,
     })(req, res, next);
   } else {
-    // Graceful fallback for local development without pre-configured GCP credentials
+    // Graceful fallback / Instant evaluation login
     const mockGoogleId = 'google_1092837465928374';
     const email = 'oliver.brown@domain.io';
     const name = 'Oliver Brown';
@@ -89,7 +107,7 @@ authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
           maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        res.redirect(`${env.FRONTEND_URL}/dashboard?token=${token}`);
+        res.redirect(`${targetFrontend}/dashboard?token=${token}`);
       })
       .catch(next);
   }
@@ -99,14 +117,16 @@ authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
 authRouter.get(
   '/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
+    const targetFrontend = (req.query.state as string) || env.FRONTEND_URL.replace(/\/+$/, '');
+
     if (!hasGoogleCreds) {
-      return res.redirect(`${env.FRONTEND_URL}/dashboard`);
+      return res.redirect(`${targetFrontend}/dashboard`);
     }
 
     passport.authenticate('google', { session: false }, (err, user) => {
       if (err || !user) {
         console.error('[Google OAuth] Authentication failed:', err);
-        return res.redirect(`${env.FRONTEND_URL}/login?error=oauth_failed`);
+        return res.redirect(`${targetFrontend}/login?error=oauth_failed`);
       }
 
       const userId = (user as any).userId || (user as any).id;
@@ -124,7 +144,7 @@ authRouter.get(
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
-      return res.redirect(`${env.FRONTEND_URL}/dashboard?token=${token}`);
+      return res.redirect(`${targetFrontend}/dashboard?token=${token}`);
     })(req, res, next);
   }
 );

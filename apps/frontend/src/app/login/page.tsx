@@ -38,7 +38,9 @@ function LoginContent() {
   }, [isAuthenticated, router]);
 
   const handleGoogleLogin = () => {
-    window.location.href = `${API_BASE_URL}/auth/google`;
+    const backend = API_BASE_URL.replace(/\/+$/, '') || 'https://reachinbox-scheduler-g593.onrender.com';
+    const redirectOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    window.location.href = `${backend}/auth/google?redirect=${encodeURIComponent(redirectOrigin)}`;
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
