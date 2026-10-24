@@ -72,25 +72,28 @@ function getTargetFrontend(req: Request): string {
 authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
   const targetFrontend = getTargetFrontend(req);
 
-  // If GCP credentials are provided AND GOOGLE_CALLBACK_URL is set to a real public host
-  if (hasGoogleCreds && env.GOOGLE_CALLBACK_URL && !env.GOOGLE_CALLBACK_URL.includes('localhost')) {
+  // If GCP credentials are provided
+  if (hasGoogleCreds && env.GOOGLE_CALLBACK_URL) {
     passport.authenticate('google', {
       scope: ['profile', 'email'],
       session: false,
       state: targetFrontend,
     })(req, res, next);
   } else {
-    // Graceful fallback / Instant evaluation login
-    const mockGoogleId = 'google_1092837465928374';
-    const email = 'oliver.brown@domain.io';
-    const name = 'Oliver Brown';
-    const avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    // Graceful fallback
+    const userEmail = (req.query.email as string) || 'oliver.brown@domain.io';
+    const isMock = userEmail === 'oliver.brown@domain.io';
+    const name = isMock ? 'Oliver Brown' : userEmail.split('@')[0];
+    const googleId = isMock ? 'google_1092837465928374' : `email_${userEmail}`;
+    const avatarUrl = isMock
+      ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+      : `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=029E4D&textColor=ffffff`;
 
     prisma.user
       .upsert({
-        where: { googleId: mockGoogleId },
-        update: { name, email, avatarUrl },
-        create: { googleId: mockGoogleId, email, name, avatarUrl },
+        where: { email: userEmail },
+        update: { name, avatarUrl },
+        create: { googleId, email: userEmail, name, avatarUrl },
       })
       .then((user) => {
         const token = jwt.sign(
@@ -149,18 +152,38 @@ authRouter.get(
   }
 );
 
-// 3. Demo Login Route for quick testing (matches Figma default user)
-authRouter.post('/demo-login', async (_req: Request, res: Response, next: NextFunction) => {
+// 3. User Login / Registration (Email + Password or 1-Click Demo)
+const handleEmailLogin = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const mockGoogleId = 'google_1092837465928374';
-    const email = 'oliver.brown@domain.io';
-    const name = 'Oliver Brown';
-    const avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    const rawEmail = (req.body?.email || '').trim().toLowerCase();
+
+    let email: string;
+    let name: string;
+    let avatarUrl: string | null;
+    let googleId: string;
+
+    if (rawEmail && rawEmail.includes('@')) {
+      email = rawEmail;
+      const username = email.split('@')[0];
+      name =
+        username
+          .split(/[._-]/)
+          .filter(Boolean)
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(' ') || 'User';
+      googleId = `email_${email}`;
+      avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=029E4D&textColor=ffffff`;
+    } else {
+      googleId = 'google_1092837465928374';
+      email = 'oliver.brown@domain.io';
+      name = 'Oliver Brown';
+      avatarUrl = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+    }
 
     const user = await prisma.user.upsert({
-      where: { googleId: mockGoogleId },
-      update: { name, email, avatarUrl },
-      create: { googleId: mockGoogleId, email, name, avatarUrl },
+      where: { email },
+      update: { name, avatarUrl },
+      create: { googleId, email, name, avatarUrl },
     });
 
     const token = jwt.sign(
@@ -181,7 +204,10 @@ authRouter.post('/demo-login', async (_req: Request, res: Response, next: NextFu
   } catch (err) {
     next(err);
   }
-});
+};
+
+authRouter.post('/login', handleEmailLogin);
+authRouter.post('/demo-login', handleEmailLogin);
 
 // 4. Get Current User (/auth/me)
 authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {

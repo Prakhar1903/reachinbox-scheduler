@@ -47,16 +47,35 @@ function LoginContent() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      // Demo / Evaluator quick sign-in
-      const res = await api.post<{ token: string; user: any }>('/auth/demo-login');
+      const res = await api.post<{ token: string; user: any }>('/auth/login', {
+        email: email.trim(),
+        password: password,
+      });
       if (res.data.token) {
         localStorage.setItem('auth_token', res.data.token);
         await refetch();
-        toast.success(`Welcome back, ${res.data.user.name}!`);
+        toast.success(`Welcome, ${res.data.user.name}!`);
         router.push('/dashboard');
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickDemoLogin = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.post<{ token: string; user: any }>('/auth/demo-login');
+      if (res.data.token) {
+        localStorage.setItem('auth_token', res.data.token);
+        await refetch();
+        toast.success(`Logged in as ${res.data.user.name}`);
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Demo login failed');
     } finally {
       setIsLoading(false);
     }
@@ -138,6 +157,17 @@ function LoginContent() {
             'Login'
           )}
         </button>
+
+        <div className="pt-2 text-center">
+          <button
+            type="button"
+            onClick={handleQuickDemoLogin}
+            disabled={isLoading}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-medium underline cursor-pointer"
+          >
+            Or 1-Click Demo Login (Evaluator mode)
+          </button>
+        </div>
       </form>
     </div>
   );
