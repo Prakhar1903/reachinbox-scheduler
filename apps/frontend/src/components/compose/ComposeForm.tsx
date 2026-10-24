@@ -38,7 +38,7 @@ export const ComposeForm: React.FC = () => {
   const scheduleMutation = useScheduleEmails();
 
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
-  const [recipients, setRecipients] = useState<string[]>(['recipient@example.com']);
+  const [recipients, setRecipients] = useState<string[]>([]);
   const [recipientInput, setRecipientInput] = useState('');
   const [subject, setSubject] = useState('');
   const [delaySeconds, setDelaySeconds] = useState<number>(2);
@@ -54,18 +54,55 @@ export const ComposeForm: React.FC = () => {
     }
   }, [senders, selectedSenderId]);
 
-  const handleAddRecipient = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
-      e.preventDefault();
-      const trimmed = recipientInput.trim().replace(',', '');
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (trimmed && emailRegex.test(trimmed)) {
-        if (!recipients.includes(trimmed)) {
-          setRecipients([...recipients, trimmed]);
+  const addEmailsFromText = (text: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Split by comma, semicolon, space, or newline
+    const tokens = text.split(/[,;\s\n]+/).map((t) => t.trim()).filter(Boolean);
+    const validEmails: string[] = [];
+
+    tokens.forEach((token) => {
+      if (emailRegex.test(token)) {
+        if (!recipients.includes(token) && !validEmails.includes(token)) {
+          validEmails.push(token);
         }
-        setRecipientInput('');
-      } else if (trimmed) {
-        toast.error('Please enter a valid email address');
+      }
+    });
+
+    if (validEmails.length > 0) {
+      setRecipients((prev) => [...prev, ...validEmails]);
+      setRecipientInput('');
+      return true;
+    }
+    return false;
+  };
+
+  const handleKeyDownRecipient = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+      e.preventDefault();
+      if (recipientInput.trim()) {
+        const added = addEmailsFromText(recipientInput);
+        if (!added && recipientInput.trim()) {
+          toast.error('Please enter a valid email address (e.g. name@example.com)');
+        }
+      }
+    } else if (e.key === 'Backspace' && !recipientInput && recipients.length > 0) {
+      // Remove last recipient on backspace
+      setRecipients((prev) => prev.slice(0, prev.length - 1));
+    }
+  };
+
+  const handleBlurRecipient = () => {
+    if (recipientInput.trim()) {
+      addEmailsFromText(recipientInput);
+    }
+  };
+
+  const handlePasteRecipient = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    if (pasted) {
+      const added = addEmailsFromText(pasted);
+      if (added) {
+        e.preventDefault();
       }
     }
   };
@@ -75,17 +112,29 @@ export const ComposeForm: React.FC = () => {
   };
 
   const handleUploadExtracted = (emails: string[]) => {
-    setRecipients(emails);
+    setRecipients((prev) => Array.from(new Set([...prev, ...emails])));
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
+    // Check if there is any uncommitted text in recipientInput
+    let finalRecipients = [...recipients];
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const trimmedInput = recipientInput.trim().replace(/[,;\s]/g, '');
+    if (trimmedInput && emailRegex.test(trimmedInput)) {
+      if (!finalRecipients.includes(trimmedInput)) {
+        finalRecipients.push(trimmedInput);
+        setRecipients(finalRecipients);
+      }
+      setRecipientInput('');
+    }
+
     if (!selectedSenderId) {
       toast.error('Please select a sender');
       return;
     }
-    if (recipients.length === 0) {
+    if (finalRecipients.length === 0) {
       toast.error('Please add at least one recipient email');
       return;
     }
@@ -101,7 +150,7 @@ export const ComposeForm: React.FC = () => {
     try {
       await scheduleMutation.mutateAsync({
         senderId: selectedSenderId,
-        toAddresses: recipients,
+        toAddresses: finalRecipients,
         subject: subject.trim(),
         body: body.trim(),
         scheduledAt: scheduledDate.toISOString(),
@@ -109,14 +158,12 @@ export const ComposeForm: React.FC = () => {
         hourlyLimit: Number(hourlyLimit) || 100,
       });
 
-      toast.success(`Scheduled ${recipients.length} email(s) successfully!`);
+      toast.success(`Scheduled ${finalRecipients.length} email(s) successfully!`);
       router.push('/dashboard/scheduled');
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to schedule email');
     }
   };
-
-  const selectedSender = senders?.find((s) => s.id === selectedSenderId);
 
   return (
     <div className="flex-1 bg-white flex flex-col min-h-screen">
@@ -181,7 +228,7 @@ export const ComposeForm: React.FC = () => {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute left-48 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-gray-400 absolute left-52 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
@@ -189,7 +236,7 @@ export const ComposeForm: React.FC = () => {
         <div className="flex items-center py-2.5 border-b border-gray-100 gap-2">
           <label className="w-20 text-sm font-medium text-gray-500">To</label>
           <div className="flex-1 flex flex-wrap items-center gap-1.5 min-h-[36px]">
-            {recipients.slice(0, 5).map((email, index) => (
+            {recipients.map((email, index) => (
               <span
                 key={index}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#EBFBF2] text-[#029E4D] border border-[#B7E8CE]"
@@ -198,24 +245,21 @@ export const ComposeForm: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => removeRecipient(index)}
-                  className="hover:text-red-500"
+                  className="hover:text-red-500 p-0.5 rounded-full"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </span>
             ))}
-            {recipients.length > 5 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-[#EBFBF2] text-[#029E4D] border border-[#B7E8CE]">
-                +{recipients.length - 5}
-              </span>
-            )}
             <input
-              type="email"
+              type="text"
               value={recipientInput}
               onChange={(e) => setRecipientInput(e.target.value)}
-              onKeyDown={handleAddRecipient}
-              placeholder={recipients.length === 0 ? 'Type email and press Enter...' : 'Add more...'}
-              className="flex-1 min-w-[160px] text-sm text-gray-800 placeholder-gray-400 focus:outline-none py-1"
+              onKeyDown={handleKeyDownRecipient}
+              onBlur={handleBlurRecipient}
+              onPaste={handlePasteRecipient}
+              placeholder={recipients.length === 0 ? 'recipient@example.com (Type and press Enter or comma)' : 'Add more...'}
+              className="flex-1 min-w-[220px] text-sm text-gray-800 placeholder-gray-400 focus:outline-none py-1"
             />
           </div>
 
