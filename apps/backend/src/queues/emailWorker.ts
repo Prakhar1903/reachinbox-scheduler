@@ -86,9 +86,10 @@ export function createEmailWorker(): Worker<EmailJobData> {
           }
         );
 
-        // Trigger live Slack notification
+        // Trigger live Slack notification (debounced to 1 alert per window)
         await notifyRateLimitHit({
           userId: email.userId,
+          senderId: sender.id,
           senderAddress: sender.address,
           hourlyLimit,
           rescheduledTime: nextHourDate,

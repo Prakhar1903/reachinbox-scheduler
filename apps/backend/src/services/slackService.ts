@@ -1,5 +1,6 @@
 import { WebClient } from '@slack/web-api';
 import { prisma } from '../config/db';
+import { redisCommandClient } from '../config/redis';
 
 export async function sendSlackNotification({
   token,
@@ -41,16 +42,28 @@ export async function sendSlackNotification({
 
 export async function notifyRateLimitHit({
   userId,
+  senderId,
   senderAddress,
   hourlyLimit,
   rescheduledTime,
 }: {
   userId: string;
+  senderId?: string;
   senderAddress: string;
   hourlyLimit: number;
   rescheduledTime: Date;
 }) {
   try {
+    // Alert deduplication / throttling: Only alert ONCE per sender per hour window
+    if (senderId) {
+      const windowKey = `slack:alert:ratelimit:${senderId}:${rescheduledTime.getTime()}`;
+      // Atomically set key with TTL. If already set, returns null (skip sending duplicate alerts)
+      const lockAcquired = await redisCommandClient.set(windowKey, '1', 'EX', 3600, 'NX');
+      if (lockAcquired !== 'OK') {
+        return; // Alert already dispatched to Slack for this window
+      }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { slackToken: true, slackChannelId: true, name: true, email: true },
