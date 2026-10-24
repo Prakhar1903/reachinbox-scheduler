@@ -136,7 +136,7 @@ export const ComposeForm: React.FC = () => {
   };
 
   // Auto-select first sender when loaded
-  React.useEffect(() => {
+  useEffect(() => {
     if (senders && senders.length > 0 && !selectedSenderId) {
       setSelectedSenderId(senders[0].id);
     }

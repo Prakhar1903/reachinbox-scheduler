@@ -20,12 +20,10 @@ export default function SentEmailsPage() {
   const isSearching = Boolean(searchQuery && searchQuery.trim().length > 0);
   const isLoading = isSearching ? searchLoading : regularLoading;
 
-  const rawEmails = isSearching
-    ? searchResults?.emails || []
-    : regularData?.emails || [];
-
   const displayedEmails = useMemo(() => {
-    let list = [...rawEmails];
+    let list = isSearching
+      ? [...(searchResults?.emails || [])]
+      : [...(regularData?.emails || [])];
 
     // Filter
     if (filter === 'starred') {
@@ -42,7 +40,7 @@ export default function SentEmailsPage() {
     });
 
     return list;
-  }, [rawEmails, filter, sortOrder]);
+  }, [isSearching, searchResults, regularData, filter, sortOrder]);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-white">

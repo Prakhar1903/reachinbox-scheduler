@@ -7,7 +7,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, error } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const [timedOut, setTimedOut] = React.useState(false);
 
   useEffect(() => {

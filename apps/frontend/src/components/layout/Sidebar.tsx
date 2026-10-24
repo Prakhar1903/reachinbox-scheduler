@@ -8,7 +8,6 @@ import { Clock, Send, ChevronDown, Plus, ExternalLink, Slack, LogOut, CheckCircl
 import { useAuth } from '@/hooks/useAuth';
 import { useEmails } from '@/hooks/useEmails';
 import { SlackModal } from './SlackModal';
-import { toast } from 'sonner';
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();

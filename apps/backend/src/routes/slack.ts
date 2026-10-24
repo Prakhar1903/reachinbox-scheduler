@@ -188,8 +188,9 @@ slackRouter.post('/connect-webhook', requireAuth, async (req: Request, res: Resp
 
 // 4. Send Test Slack Notification
 slackRouter.post('/test', requireAuth, async (req: Request, res: Response) => {
+  let user: any = null;
   try {
-    const user = await prisma.user.findUnique({
+    user = await prisma.user.findUnique({
       where: { id: req.user!.userId },
       select: { slackToken: true, slackChannelId: true, name: true, email: true },
     });
