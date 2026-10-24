@@ -9,6 +9,7 @@ out/
 # TypeScript / Transpiled output
 dist/
 build/
+*.tsbuildinfo
 
 # Environment Variables
 .env

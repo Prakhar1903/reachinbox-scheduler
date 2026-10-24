@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Calendar, Clock, X } from 'lucide-react';
+import { Clock, X } from 'lucide-react';
 import { format, addDays, setHours, setMinutes, setSeconds, addMinutes } from 'date-fns';
 import { Button } from '../ui/Button';
 

@@ -1,6 +1,5 @@
 import { prisma } from './config/db';
 import { emailQueue } from './queues/emailQueue';
-import { indexEmail } from './services/searchService';
 
 async function runLoadSimulation() {
   console.log('🚀 Starting 1,000 Email Scheduler Load Test...');

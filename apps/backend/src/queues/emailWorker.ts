@@ -56,7 +56,7 @@ export function createEmailWorker(): Worker<EmailJobData> {
       }
 
       // 3. Hourly Rate Limiting: Atomic check via Redis Lua
-      const { allowed, currentCount } = await checkAndIncrementHourlyRate(
+      const { allowed } = await checkAndIncrementHourlyRate(
         sender.id,
         hourlyLimit
       );
@@ -119,7 +119,7 @@ export function createEmailWorker(): Worker<EmailJobData> {
         const { etherealUrl } = await sendEmailViaEthereal(email, sender);
 
         const sentAt = new Date();
-        const updatedEmail = await prisma.email.update({
+        await prisma.email.update({
           where: { id: emailId },
           data: {
             status: 'SENT',
