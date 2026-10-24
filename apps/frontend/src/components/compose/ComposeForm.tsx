@@ -443,7 +443,7 @@ export const ComposeForm: React.FC = () => {
         <div className="flex items-center py-2.5 border-b border-gray-100 gap-2">
           <label className="w-20 text-sm font-medium text-gray-500">To</label>
           <div className="flex-1 flex flex-wrap items-center gap-1.5 min-h-[36px]">
-            {recipients.map((email, index) => (
+            {(recipients.length > 20 ? recipients.slice(0, 15) : recipients).map((email, index) => (
               <span
                 key={index}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#EBFBF2] text-[#029E4D] border border-[#B7E8CE]"
@@ -458,6 +458,20 @@ export const ComposeForm: React.FC = () => {
                 </button>
               </span>
             ))}
+            {recipients.length > 20 && (
+              <div className="inline-flex items-center gap-1.5">
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                  + {recipients.length - 15} more leads
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRecipients([])}
+                  className="text-xs text-red-500 hover:text-red-700 hover:underline font-medium px-1 cursor-pointer"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
             <input
               type="text"
               value={recipientInput}

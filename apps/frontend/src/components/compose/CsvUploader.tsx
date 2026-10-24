@@ -48,15 +48,22 @@ export const CsvUploader: React.FC<CsvUploaderProps> = ({ onEmailsExtracted }) =
         });
 
         // Deduplicate
-        const uniqueEmails = Array.from(new Set(extracted));
+        let uniqueEmails = Array.from(new Set(extracted));
 
         if (uniqueEmails.length === 0) {
           toast.error('No valid email addresses found in the file.');
           return;
         }
 
+        const maxEmailsPerBatch = 2000;
+        if (uniqueEmails.length > maxEmailsPerBatch) {
+          toast.info(`CSV contained ${uniqueEmails.length} emails. Imported top ${maxEmailsPerBatch} leads (campaign batch limit).`);
+          uniqueEmails = uniqueEmails.slice(0, maxEmailsPerBatch);
+        } else {
+          toast.success(`Successfully detected ${uniqueEmails.length} lead email address(es)!`);
+        }
+
         onEmailsExtracted(uniqueEmails);
-        toast.success(`Successfully detected ${uniqueEmails.length} lead email address(es)!`);
 
         // Reset file input
         if (fileInputRef.current) {
