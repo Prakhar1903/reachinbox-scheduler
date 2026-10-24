@@ -10,7 +10,8 @@
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",
     "test": "vitest run",
-    "test:load": "tsx src/test-load-1000.ts"
+    "test:load": "tsx src/test-load-1000.ts",
+    "db:clean": "tsx src/clean-db.ts"
   },
   "dependencies": {
     "@bull-board/api": "^5.21.3",
