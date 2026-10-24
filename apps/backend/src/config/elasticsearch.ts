@@ -7,8 +7,22 @@ export const esClient = new Client({
 
 export const EMAILS_INDEX = 'reachinbox_emails';
 
+let esAvailable = false;
+
+export function isElasticsearchAvailable() {
+  return esAvailable;
+}
+
 export async function initElasticsearch() {
   try {
+    const ping = await esClient.ping();
+    if (!ping) {
+      console.log('[Elasticsearch] Cluster unreachable. Operating with PostgreSQL search fallback.');
+      esAvailable = false;
+      return;
+    }
+
+    esAvailable = true;
     const indexExists = await esClient.indices.exists({ index: EMAILS_INDEX });
     if (!indexExists) {
       await esClient.indices.create({
@@ -53,6 +67,7 @@ export async function initElasticsearch() {
       console.log(`[Elasticsearch] Index "${EMAILS_INDEX}" is ready.`);
     }
   } catch (error) {
-    console.error('[Elasticsearch] Initialization error:', error);
+    esAvailable = false;
+    console.log('[Elasticsearch] Cluster optional/unreachable. Operating with PostgreSQL search fallback.');
   }
 }

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../config/db';
 import { redisCommandClient } from '../config/redis';
-import { esClient } from '../config/elasticsearch';
+import { esClient, isElasticsearchAvailable } from '../config/elasticsearch';
 
 export const healthRouter = Router();
 
@@ -17,7 +17,6 @@ healthRouter.get('/', async (_req: Request, res: Response) => {
     status.database = 'connected';
   } catch (err: any) {
     status.database = `error: ${err.message}`;
-    status.status = 'degraded';
   }
 
   try {
@@ -25,17 +24,22 @@ healthRouter.get('/', async (_req: Request, res: Response) => {
     status.redis = ping === 'PONG' ? 'connected' : 'unexpected_response';
   } catch (err: any) {
     status.redis = `error: ${err.message}`;
-    status.status = 'degraded';
   }
 
-  try {
-    const es = await esClient.ping();
-    status.elasticsearch = es ? 'connected' : 'disconnected';
-  } catch (err: any) {
-    status.elasticsearch = `error: ${err.message}`;
-    status.status = 'degraded';
+  if (isElasticsearchAvailable()) {
+    try {
+      const es = await esClient.ping();
+      status.elasticsearch = es ? 'connected' : 'fallback_postgres';
+    } catch (_err) {
+      status.elasticsearch = 'fallback_postgres';
+    }
+  } else {
+    status.elasticsearch = 'fallback_postgres';
   }
 
-  const statusCode = status.status === 'healthy' ? 200 : 503;
+  const isHealthy = status.database === 'connected' && status.redis === 'connected';
+  status.status = isHealthy ? 'healthy' : 'degraded';
+
+  const statusCode = isHealthy ? 200 : 503;
   return res.status(statusCode).json(status);
 });
