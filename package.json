@@ -9,6 +9,7 @@
     "build:backend": "pnpm --filter @reachinbox/backend build",
     "build:frontend": "pnpm --filter @reachinbox/frontend build",
     "build": "pnpm --filter @reachinbox/backend build && pnpm --filter @reachinbox/frontend build",
+    "start:backend": "pnpm --filter @reachinbox/backend start",
     "test:backend": "pnpm --filter @reachinbox/backend test",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"

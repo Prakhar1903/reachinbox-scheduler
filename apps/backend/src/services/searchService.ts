@@ -1,5 +1,6 @@
 import { esClient, EMAILS_INDEX } from '../config/elasticsearch';
 import { Email, Sender } from '@prisma/client';
+import { prisma } from '../config/db';
 
 export interface EmailSearchDoc {
   id: string;
@@ -111,7 +112,47 @@ export async function searchEmails({
       emails: hits,
     };
   } catch (error) {
-    console.error('[SearchService] Search error:', error);
-    return { total: 0, emails: [] };
+    console.warn('[SearchService] Elasticsearch query failed, falling back to PostgreSQL:', (error as Error).message);
+    try {
+      const whereClause: any = { userId };
+      if (status) {
+        whereClause.status = status;
+      }
+      if (query && query.trim().length > 0) {
+        const q = query.trim();
+        whereClause.OR = [
+          { subject: { contains: q, mode: 'insensitive' } },
+          { body: { contains: q, mode: 'insensitive' } },
+          { toAddress: { contains: q, mode: 'insensitive' } },
+        ];
+      }
+
+      const emails = await prisma.email.findMany({
+        where: whereClause,
+        include: { sender: true },
+        orderBy: { scheduledAt: 'desc' },
+        take: limit,
+      });
+
+      return {
+        total: emails.length,
+        emails: emails.map((e) => ({
+          id: e.id,
+          userId: e.userId,
+          senderId: e.senderId,
+          senderAddress: e.sender.address,
+          toAddress: e.toAddress,
+          subject: e.subject,
+          body: (e.body || '').replace(/<[^>]*>/g, ' '),
+          status: e.status,
+          scheduledAt: e.scheduledAt.toISOString(),
+          sentAt: e.sentAt ? e.sentAt.toISOString() : null,
+          createdAt: e.createdAt.toISOString(),
+        })),
+      };
+    } catch (fallbackError) {
+      console.error('[SearchService] Fallback DB query failed:', fallbackError);
+      return { total: 0, emails: [] };
+    }
   }
 }

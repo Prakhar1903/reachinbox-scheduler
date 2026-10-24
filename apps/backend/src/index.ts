@@ -23,7 +23,19 @@ const app = express();
 // Middlewares
 app.use(
   cors({
-    origin: [env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:3001'],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        origin === env.FRONTEND_URL ||
+        origin === 'http://localhost:3000' ||
+        origin === 'http://localhost:3001' ||
+        origin.endsWith('.vercel.app') ||
+        origin.endsWith('.pages.dev')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );

@@ -81,10 +81,11 @@ authRouter.get('/google', (req: Request, res: Response, next: NextFunction) => {
           { expiresIn: '7d' }
         );
 
+        const isProd = env.NODE_ENV === 'production';
         res.cookie('jwt', token, {
           httpOnly: true,
-          secure: env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          secure: isProd,
+          sameSite: isProd ? 'none' : 'lax',
           maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
@@ -115,10 +116,11 @@ authRouter.get(
         { expiresIn: '7d' }
       );
 
+      const isProd = env.NODE_ENV === 'production';
       res.cookie('jwt', token, {
         httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
@@ -147,10 +149,11 @@ authRouter.post('/demo-login', async (_req: Request, res: Response, next: NextFu
       { expiresIn: '7d' }
     );
 
+    const isProd = env.NODE_ENV === 'production';
     res.cookie('jwt', token, {
       httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
