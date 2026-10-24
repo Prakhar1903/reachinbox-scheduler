@@ -240,6 +240,26 @@ export const ComposeForm: React.FC = () => {
       return;
     }
 
+    // 1. Validate Delay Range: 1s to 3600s
+    if (Number(delaySeconds) < 1 || Number(delaySeconds) > 3600) {
+      toast.error('Delay between emails must be between 1 and 3,600 seconds (max 1 hour).');
+      return;
+    }
+
+    // 2. Validate Hourly Limit Range: 1 to 2000 emails/hour
+    if (Number(hourlyLimit) < 1 || Number(hourlyLimit) > 2000) {
+      toast.error('Hourly limit must be between 1 and 2,000 emails per hour.');
+      return;
+    }
+
+    // 3. Validate Scheduled Time: cannot be in the past (allowing 15s transit buffer)
+    const now = Date.now();
+    if (scheduledDate.getTime() < now - 15000) {
+      toast.error('Scheduled time cannot be in the past. Please select a future time via "Send Later".');
+      setIsSendLaterOpen(true);
+      return;
+    }
+
     try {
       await scheduleMutation.mutateAsync({
         senderId: selectedSenderId,
@@ -247,8 +267,8 @@ export const ComposeForm: React.FC = () => {
         subject: subject.trim(),
         body: currentHtml.trim(),
         scheduledAt: scheduledDate.toISOString(),
-        delaySeconds: Number(delaySeconds) || 2,
-        hourlyLimit: Number(hourlyLimit) || 100,
+        delaySeconds: Math.max(1, Math.min(3600, Math.floor(Number(delaySeconds) || 2))),
+        hourlyLimit: Math.max(1, Math.min(2000, Math.floor(Number(hourlyLimit) || 100))),
         attachments: attachments.map((a) => ({
           filename: a.filename,
           size: a.size,
@@ -431,13 +451,25 @@ export const ComposeForm: React.FC = () => {
             <div className="flex items-center gap-1">
               <input
                 type="number"
-                min="0"
+                min="1"
                 max="3600"
                 value={delaySeconds}
-                onChange={(e) => setDelaySeconds(Number(e.target.value))}
+                onKeyDown={(e) => {
+                  if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (isNaN(val)) {
+                    setDelaySeconds(1);
+                  } else {
+                    setDelaySeconds(Math.max(1, Math.min(3600, val)));
+                  }
+                }}
                 className="w-16 text-center text-sm font-medium bg-[#F4F5F7] border border-gray-200 rounded-md py-1 focus:bg-white focus:outline-none focus:border-[#029E4D]"
               />
-              <span className="text-xs text-gray-400">sec</span>
+              <span className="text-xs text-gray-400">sec (1-3600)</span>
             </div>
           </div>
 
@@ -449,12 +481,24 @@ export const ComposeForm: React.FC = () => {
               <input
                 type="number"
                 min="1"
-                max="5000"
+                max="2000"
                 value={hourlyLimit}
-                onChange={(e) => setHourlyLimit(Number(e.target.value))}
+                onKeyDown={(e) => {
+                  if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (isNaN(val)) {
+                    setHourlyLimit(1);
+                  } else {
+                    setHourlyLimit(Math.max(1, Math.min(2000, val)));
+                  }
+                }}
                 className="w-16 text-center text-sm font-medium bg-[#F4F5F7] border border-gray-200 rounded-md py-1 focus:bg-white focus:outline-none focus:border-[#029E4D]"
               />
-              <span className="text-xs text-gray-400">emails/hr</span>
+              <span className="text-xs text-gray-400">emails/hr (1-2000)</span>
             </div>
           </div>
         </div>

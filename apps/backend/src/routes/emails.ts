@@ -14,8 +14,20 @@ const scheduleEmailSchema = z.object({
   subject: z.string().min(1, 'Subject is required'),
   body: z.string().min(1, 'Body is required'),
   scheduledAt: z.string().datetime().or(z.string()),
-  delaySeconds: z.coerce.number().min(0).default(2),
-  hourlyLimit: z.coerce.number().min(1).default(200),
+  delaySeconds: z
+    .coerce
+    .number()
+    .int('Delay must be an integer')
+    .min(1, 'Minimum delay between emails is 1 second')
+    .max(3600, 'Maximum delay between emails is 3,600 seconds (1 hour)')
+    .default(2),
+  hourlyLimit: z
+    .coerce
+    .number()
+    .int('Hourly limit must be an integer')
+    .min(1, 'Minimum hourly limit is 1 email/hr')
+    .max(2000, 'Maximum hourly limit is 2,000 emails/hr')
+    .default(200),
   attachments: z
     .array(
       z.object({
@@ -48,6 +60,14 @@ emailsRouter.post('/schedule', requireAuth, async (req: Request, res: Response) 
     const scheduledDate = new Date(parsed.scheduledAt);
     if (isNaN(scheduledDate.getTime())) {
       return res.status(400).json({ error: 'Invalid scheduledAt date format' });
+    }
+
+    // Strict validation: Reject past scheduled dates (allowing 60s network transit / clock drift buffer)
+    const now = Date.now();
+    if (scheduledDate.getTime() < now - 60000) {
+      return res.status(400).json({
+        error: 'Scheduled time cannot be in the past. Please select a future date and time.',
+      });
     }
 
     const createdEmails = [];
