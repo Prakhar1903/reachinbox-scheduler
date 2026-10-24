@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { prisma } from '../config/db';
 import { requireAuth } from '../middleware/requireAuth';
-import { scheduleEmailJob } from '../queues/emailQueue';
+import { scheduleEmailJob, emailQueue } from '../queues/emailQueue';
 import { indexEmail, searchEmails } from '../services/searchService';
 import { env } from '../config/env';
 
@@ -70,44 +71,53 @@ emailsRouter.post('/schedule', requireAuth, async (req: Request, res: Response) 
       });
     }
 
-    const createdEmails = [];
+    const delayMs = Math.max(0, scheduledDate.getTime() - Date.now());
+    const delaySeconds = parsed.delaySeconds || env.DELAY_BETWEEN_EMAILS_MS / 1000;
+    const hourlyLimit = parsed.hourlyLimit || env.MAX_EMAILS_PER_HOUR_PER_SENDER;
+    const attachments = parsed.attachments.length > 0 ? (parsed.attachments as any) : undefined;
 
-    // Create DB records and enqueue jobs
-    for (const toAddress of parsed.toAddresses) {
-      const email = await prisma.email.create({
-        data: {
-          userId,
-          senderId: parsed.senderId,
-          toAddress,
-          subject: parsed.subject,
-          body: parsed.body,
-          attachments: parsed.attachments.length > 0 ? (parsed.attachments as any) : undefined,
-          scheduledAt: scheduledDate,
-          status: 'SCHEDULED',
-          delaySeconds: parsed.delaySeconds || env.DELAY_BETWEEN_EMAILS_MS / 1000,
-          hourlyLimit: parsed.hourlyLimit || env.MAX_EMAILS_PER_HOUR_PER_SENDER,
-        },
-      });
+    // Pre-generate UUIDs for high-throughput bulk insertion
+    const emailRecords = parsed.toAddresses.map((toAddress) => {
+      const emailId = crypto.randomUUID();
+      return {
+        id: emailId,
+        userId,
+        senderId: parsed.senderId,
+        toAddress,
+        subject: parsed.subject,
+        body: parsed.body,
+        attachments,
+        scheduledAt: scheduledDate,
+        status: 'SCHEDULED' as const,
+        bullJobId: emailId,
+        delaySeconds,
+        hourlyLimit,
+      };
+    });
 
-      // BullMQ Schedule with Idempotency Guard (jobId = email.id)
-      const job = await scheduleEmailJob(email.id, scheduledDate);
+    // 1. Bulk insert all records into PostgreSQL in a single query
+    await prisma.email.createMany({
+      data: emailRecords,
+    });
 
-      // Save bullJobId
-      await prisma.email.update({
-        where: { id: email.id },
-        data: { bullJobId: String(job.id) },
-      });
+    // 2. Bulk enqueue all jobs into BullMQ Redis in a single pipeline
+    const bulkJobs = emailRecords.map((email) => ({
+      name: 'send-email',
+      data: { emailId: email.id },
+      opts: {
+        jobId: email.id,
+        delay: delayMs,
+      },
+    }));
+    await emailQueue.addBulk(bulkJobs);
 
-      // Index in Elasticsearch
-      await indexEmail(email, sender);
-
-      createdEmails.push(email);
-    }
+    // 3. Background non-blocking index in Elasticsearch
+    Promise.allSettled(emailRecords.map((email) => indexEmail(email as any, sender))).catch(() => {});
 
     return res.status(201).json({
-      message: `Successfully scheduled ${createdEmails.length} email(s)`,
-      count: createdEmails.length,
-      emails: createdEmails,
+      message: `Successfully scheduled ${emailRecords.length} email(s)`,
+      count: emailRecords.length,
+      emails: emailRecords,
     });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
