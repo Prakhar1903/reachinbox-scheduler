@@ -169,8 +169,31 @@ emailsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
       }),
     ]);
 
+    // Optimize payload: Strip heavy base64 dataUrl from attachments in list view
+    const lightweightEmails = emails.map((e) => {
+      const sanitizedAttachments = Array.isArray(e.attachments)
+        ? (e.attachments as any[]).map((att) => ({
+            id: att.id,
+            filename: att.filename,
+            size: att.size,
+            contentType: att.contentType,
+          }))
+        : undefined;
+
+      let sanitizedBody = e.body;
+      if (sanitizedBody && sanitizedBody.includes(';base64,')) {
+        sanitizedBody = sanitizedBody.replace(/data:[^;]+;base64,[^"']+/g, '[Image]');
+      }
+
+      return {
+        ...e,
+        body: sanitizedBody,
+        attachments: sanitizedAttachments,
+      };
+    });
+
     return res.json({
-      emails,
+      emails: lightweightEmails,
       pagination: {
         page: pageNum,
         limit: take,
