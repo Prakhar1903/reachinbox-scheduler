@@ -182,7 +182,7 @@ authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
     });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'User not found in database. Session expired.' });
     }
 
     return res.json({

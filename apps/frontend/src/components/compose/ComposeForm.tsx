@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,6 +16,8 @@ import {
   Italic,
   Underline,
   AlignLeft,
+  AlignCenter,
+  AlignRight,
   ChevronsUpDown,
   ListOrdered,
   List,
@@ -24,6 +26,7 @@ import {
   Quote,
   Code,
   Strikethrough,
+  FileText,
 } from 'lucide-react';
 import { useSenders } from '@/hooks/useSenders';
 import { useScheduleEmails } from '@/hooks/useEmails';
@@ -31,6 +34,8 @@ import { CsvUploader } from './CsvUploader';
 import { SendLaterPopover } from './SendLaterPopover';
 import { Button } from '../ui/Button';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { Attachment } from '@/types';
 
 export const ComposeForm: React.FC = () => {
   const router = useRouter();
@@ -46,8 +51,89 @@ export const ComposeForm: React.FC = () => {
   const [body, setBody] = useState<string>('');
   const [scheduledDate, setScheduledDate] = useState<Date>(new Date(Date.now() + 2 * 60 * 1000));
   const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
-  const [attachments, setAttachments] = useState<{ id: string; name: string; size: string }[]>([]);
-  const attachmentInputRef = React.useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  // Active toolbar formatting states
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strikethrough: false,
+    orderedList: false,
+    unorderedList: false,
+  });
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [currentBlock, setCurrentBlock] = useState('Normal');
+
+  const updateActiveFormats = () => {
+    if (!editorRef.current) return;
+    try {
+      setActiveFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strikethrough: document.queryCommandState('strikeThrough'),
+        orderedList: document.queryCommandState('insertOrderedList'),
+        unorderedList: document.queryCommandState('insertUnorderedList'),
+      });
+
+      const block = document.queryCommandValue('formatBlock');
+      if (block === 'h1') setCurrentBlock('H1');
+      else if (block === 'h2') setCurrentBlock('H2');
+      else if (block === 'h3') setCurrentBlock('H3');
+      else if (block === 'blockquote') setCurrentBlock('Quote');
+      else if (block === 'pre') setCurrentBlock('Code');
+      else setCurrentBlock('Normal');
+    } catch {
+      // Ignore if document query is not supported
+    }
+  };
+
+  const executeCommand = (command: string, value: string | undefined = undefined) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    document.execCommand(command, false, value);
+    if (editorRef.current) {
+      setBody(editorRef.current.innerHTML);
+    }
+    updateActiveFormats();
+  };
+
+  const handleEditorInput = () => {
+    if (editorRef.current) {
+      const html = editorRef.current.innerHTML;
+      // If it's just <br> or empty, treat as empty
+      if (html === '<br>' || html === '<div><br></div>' || !editorRef.current.innerText.trim()) {
+        setBody('');
+      } else {
+        setBody(html);
+      }
+    }
+    updateActiveFormats();
+  };
+
+  const [alignment, setAlignment] = useState<'left' | 'center' | 'right'>('left');
+
+  const cycleAlignment = () => {
+    if (alignment === 'left') {
+      executeCommand('justifyCenter');
+      setAlignment('center');
+    } else if (alignment === 'center') {
+      executeCommand('justifyRight');
+      setAlignment('right');
+    } else {
+      executeCommand('justifyLeft');
+      setAlignment('left');
+    }
+  };
+
+  const setBlockType = (tag: string, label: string) => {
+    executeCommand('formatBlock', tag);
+    setCurrentBlock(label);
+    setShowTypeMenu(false);
+  };
 
   // Auto-select first sender when loaded
   React.useEffect(() => {
@@ -144,7 +230,12 @@ export const ComposeForm: React.FC = () => {
       toast.error('Subject is required');
       return;
     }
-    if (!body.trim()) {
+    const currentHtml = editorRef.current ? editorRef.current.innerHTML : body;
+    const plainText = editorRef.current
+      ? editorRef.current.innerText.trim()
+      : body.replace(/<[^>]*>/g, '').trim();
+
+    if (!plainText) {
       toast.error('Email body content is required');
       return;
     }
@@ -154,10 +245,16 @@ export const ComposeForm: React.FC = () => {
         senderId: selectedSenderId,
         toAddresses: finalRecipients,
         subject: subject.trim(),
-        body: body.trim(),
+        body: currentHtml.trim(),
         scheduledAt: scheduledDate.toISOString(),
         delaySeconds: Number(delaySeconds) || 2,
         hourlyLimit: Number(hourlyLimit) || 100,
+        attachments: attachments.map((a) => ({
+          filename: a.filename,
+          size: a.size,
+          contentType: a.contentType,
+          dataUrl: a.dataUrl,
+        })),
       });
 
       toast.success(`Scheduled ${finalRecipients.length} email(s) successfully!`);
@@ -187,18 +284,33 @@ export const ComposeForm: React.FC = () => {
             ref={attachmentInputRef}
             type="file"
             multiple
-            onChange={(e) => {
+            onChange={async (e) => {
               if (e.target.files && e.target.files.length > 0) {
-                const newFiles = Array.from(e.target.files).map((f) => ({
-                  id: `${f.name}-${Date.now()}-${Math.random()}`,
-                  name: f.name,
-                  size:
-                    f.size > 1024 * 1024
-                      ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
-                      : `${Math.round(f.size / 1024)} KB`,
-                }));
-                setAttachments((prev) => [...prev, ...newFiles]);
-                toast.success(`Attached ${newFiles.length} file(s)`);
+                const files = Array.from(e.target.files);
+                const loaded = await Promise.all(
+                  files.map((file) => {
+                    return new Promise<Attachment>((resolve) => {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        resolve({
+                          id: `${file.name}-${Date.now()}-${Math.random()}`,
+                          filename: file.name,
+                          size:
+                            file.size > 1024 * 1024
+                              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                              : `${Math.round(file.size / 1024)} KB`,
+                          contentType: file.type || 'application/octet-stream',
+                          dataUrl: reader.result as string,
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                  })
+                );
+                setAttachments((prev) => [...prev, ...loaded]);
+                toast.success(`Attached ${files.length} file(s)`);
+                // Clear input so same file can be selected again if needed
+                e.target.value = '';
               }
             }}
             className="hidden"
@@ -348,88 +460,364 @@ export const ComposeForm: React.FC = () => {
         </div>
 
         {/* Formatting Toolbar matching Figma */}
-        <div className="bg-[#F8FAFC] border border-gray-200 rounded-xl p-2 mt-4 flex flex-wrap items-center gap-1 text-gray-600">
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+        <div className="bg-[#F8FAFC] border border-gray-200 rounded-xl p-2 mt-4 flex flex-wrap items-center gap-1 text-gray-600 relative select-none">
+          {/* Undo */}
+          <button
+            type="button"
+            title="Undo (Ctrl+Z)"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('undo');
+            }}
+            className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          >
             <Undo2 className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Redo */}
+          <button
+            type="button"
+            title="Redo (Ctrl+Y)"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('redo');
+            }}
+            className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          >
             <Redo2 className="w-4 h-4" />
           </button>
+
           <div className="w-[1px] h-4 bg-gray-300 mx-1" />
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded flex items-center gap-0.5">
-            <Type className="w-4 h-4" />
-            <ChevronsUpDown className="w-3 h-3 text-gray-400" />
-          </button>
+
+          {/* Typography / Headings Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              title="Text Format / Heading"
+              onClick={() => setShowTypeMenu((prev) => !prev)}
+              className={cn(
+                'p-1.5 hover:bg-gray-200 rounded flex items-center gap-1 transition-colors text-xs font-semibold px-2',
+                showTypeMenu || currentBlock !== 'Normal' ? 'bg-gray-200 text-gray-900' : ''
+              )}
+            >
+              <Type className="w-4 h-4" />
+              <span className="text-[11px]">{currentBlock}</span>
+              <ChevronsUpDown className="w-3 h-3 text-gray-400" />
+            </button>
+
+            {showTypeMenu && (
+              <div className="absolute left-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30">
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setBlockType('p', 'Normal');
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 font-normal"
+                >
+                  Normal text
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setBlockType('h1', 'H1');
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 font-bold"
+                >
+                  Heading 1
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setBlockType('h2', 'H2');
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 font-bold"
+                >
+                  Heading 2
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setBlockType('h3', 'H3');
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 font-semibold"
+                >
+                  Heading 3
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="w-[1px] h-4 bg-gray-300 mx-1" />
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded font-bold">
+
+          {/* Bold */}
+          <button
+            type="button"
+            title="Bold (Ctrl+B)"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('bold');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.bold ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Bold className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded italic">
+
+          {/* Italic */}
+          <button
+            type="button"
+            title="Italic (Ctrl+I)"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('italic');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.italic ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Italic className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded underline">
+
+          {/* Underline */}
+          <button
+            type="button"
+            title="Underline (Ctrl+U)"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('underline');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.underline ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Underline className="w-4 h-4" />
           </button>
+
           <div className="w-[1px] h-4 bg-gray-300 mx-1" />
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
-            <AlignLeft className="w-4 h-4" />
+
+          {/* Alignment Toggle / Cycle */}
+          <button
+            type="button"
+            title={`Text Alignment (${alignment})`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              cycleAlignment();
+            }}
+            className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          >
+            {alignment === 'left' && <AlignLeft className="w-4 h-4" />}
+            {alignment === 'center' && <AlignCenter className="w-4 h-4" />}
+            {alignment === 'right' && <AlignRight className="w-4 h-4" />}
           </button>
+
           <div className="w-[1px] h-4 bg-gray-300 mx-1" />
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Ordered List */}
+          <button
+            type="button"
+            title="Numbered list"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('insertOrderedList');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.orderedList ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <ListOrdered className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Unordered List */}
+          <button
+            type="button"
+            title="Bullet list"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('insertUnorderedList');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.unorderedList ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <List className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Outdent */}
+          <button
+            type="button"
+            title="Decrease indent"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('outdent');
+            }}
+            className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          >
             <Outdent className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Indent */}
+          <button
+            type="button"
+            title="Increase indent"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('indent');
+            }}
+            className="p-1.5 hover:bg-gray-200 rounded transition-colors"
+          >
             <Indent className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Quote */}
+          <button
+            type="button"
+            title="Quote block"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              if (currentBlock === 'Quote') {
+                setBlockType('p', 'Normal');
+              } else {
+                setBlockType('blockquote', 'Quote');
+              }
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              currentBlock === 'Quote' ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Quote className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Code */}
+          <button
+            type="button"
+            title="Code block"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              if (currentBlock === 'Code') {
+                setBlockType('p', 'Normal');
+              } else {
+                setBlockType('pre', 'Code');
+              }
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              currentBlock === 'Code' ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Code className="w-4 h-4" />
           </button>
-          <button type="button" className="p-1.5 hover:bg-gray-200 rounded">
+
+          {/* Strikethrough */}
+          <button
+            type="button"
+            title="Strikethrough"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              executeCommand('strikeThrough');
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              activeFormats.strikethrough ? 'bg-[#EBFBF2] text-[#029E4D]' : 'hover:bg-gray-200'
+            )}
+          >
             <Strikethrough className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Email Body Text Area */}
-        <div className="mt-4 flex-1 flex flex-col">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={10}
-            placeholder="Type Your Reply..."
-            className="w-full flex-1 p-4 text-sm text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:border-[#029E4D] placeholder-gray-400 resize-none font-sans"
+        {/* Email Body Rich Text Editor Area */}
+        <div className="mt-4 flex-1 flex flex-col relative">
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleEditorInput}
+            onKeyUp={updateActiveFormats}
+            onMouseUp={updateActiveFormats}
+            onSelect={updateActiveFormats}
+            role="textbox"
+            aria-multiline="true"
+            className="w-full min-h-[260px] flex-1 p-4 text-sm text-gray-900 border border-gray-200 rounded-xl focus:outline-none focus:border-[#029E4D] resize-none font-sans overflow-y-auto leading-relaxed prose prose-sm max-w-none [&_blockquote]:border-l-4 [&_blockquote]:border-emerald-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-2 [&_pre]:bg-gray-100 [&_pre]:p-2.5 [&_pre]:rounded [&_pre]:font-mono [&_pre]:text-xs [&_pre]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:my-1.5"
           />
 
-          {/* Attached Files List (if any attached) */}
+          {/* Floating Placeholder when empty */}
+          {!body && (
+            <div
+              onClick={() => editorRef.current?.focus()}
+              className="absolute top-4 left-4 text-sm text-gray-400 pointer-events-none select-none"
+            >
+              Type Your Reply...
+            </div>
+          )}
+
+          {/* Attached Files List - Figma Card Style */}
           {attachments.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {attachments.map((file) => (
-                <div
-                  key={file.id}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs font-medium text-gray-800"
-                >
-                  <Paperclip className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  <span className="truncate max-w-[180px]">{file.name}</span>
-                  <span className="text-gray-400 text-[11px] shrink-0">({file.size})</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAttachments((prev) => prev.filter((f) => f.id !== file.id))
-                    }
-                    className="text-gray-400 hover:text-red-500 ml-1 rounded-full p-0.5"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>Attachments ({attachments.length})</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {attachments.map((file) => {
+                  const isImage = file.contentType?.startsWith('image/') || file.dataUrl?.startsWith('data:image/');
+                  return (
+                    <div
+                      key={file.id || file.filename}
+                      className="w-44 rounded-xl border border-gray-200 overflow-hidden bg-white shadow-xs group relative flex flex-col"
+                    >
+                      {/* Thumbnail Header */}
+                      <div className="h-28 bg-[#F8FAFC] flex items-center justify-center overflow-hidden relative">
+                        {isImage && file.dataUrl ? (
+                          <img
+                            src={file.dataUrl}
+                            alt={file.filename}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 text-gray-400">
+                            <FileText className="w-8 h-8 text-gray-400" />
+                            <span className="text-[10px] uppercase font-semibold">
+                              {file.filename.split('.').pop() || 'FILE'}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Remove Button on Hover */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachments((prev) => prev.filter((f) => f.id !== file.id))
+                          }
+                          title="Remove attachment"
+                          className="absolute top-1.5 right-1.5 p-1 bg-white/90 hover:bg-red-500 hover:text-white text-gray-600 rounded-full shadow-xs transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* File Details */}
+                      <div className="p-2.5 bg-white border-t border-gray-100 flex flex-col">
+                        <span className="text-xs font-semibold text-gray-800 truncate" title={file.filename}>
+                          {file.filename}
+                        </span>
+                        <span className="text-[11px] text-gray-400 mt-0.5">
+                          {file.size || 'Attachment'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

@@ -13,9 +13,21 @@ export async function sendSlackNotification({
   blocks?: any[];
 }) {
   try {
+    // If it's an Incoming Webhook URL
+    if (token.startsWith('https://hooks.slack.com/')) {
+      const response = await fetch(token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, blocks }),
+      });
+      console.log('[SlackService] Webhook notification delivered:', response.status);
+      return { ok: response.ok };
+    }
+
+    // Standard Slack Bot Token (xoxb-...)
     const slack = new WebClient(token);
     const result = await slack.chat.postMessage({
-      channel,
+      channel: channel || 'general',
       text,
       blocks,
     });
@@ -23,7 +35,7 @@ export async function sendSlackNotification({
     return result;
   } catch (error: any) {
     console.error('[SlackService] Failed to post Slack message:', error?.message || error);
-    return null;
+    throw error;
   }
 }
 

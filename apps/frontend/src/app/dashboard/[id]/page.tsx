@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Star, Trash2, Archive, ExternalLink, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Star, Trash2, Archive, ExternalLink, ChevronDown, Paperclip, FileText, Download } from 'lucide-react';
 import {
   useEmailDetail,
   useToggleStarEmail,
@@ -186,6 +186,75 @@ export default function EmailDetailPage() {
             className="space-y-4"
           />
         </div>
+
+        {/* Real Attached Files Section Matching Figma */}
+        {email.attachments && (email.attachments as any[]).length > 0 && (
+          <div className="pt-6 border-t border-gray-100">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-3">
+              <Paperclip className="w-3.5 h-3.5" />
+              <span>Attachments ({(email.attachments as any[]).length})</span>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              {(email.attachments as any[]).map((att: any, idx: number) => {
+                const isImage =
+                  att.contentType?.startsWith('image/') ||
+                  att.dataUrl?.startsWith('data:image/');
+
+                return (
+                  <div
+                    key={att.id || idx}
+                    className="w-48 rounded-xl border border-gray-200 overflow-hidden bg-white shadow-xs group transition-shadow hover:shadow-md"
+                  >
+                    {/* Thumbnail */}
+                    <div className="h-32 bg-[#F8FAFC] flex items-center justify-center overflow-hidden relative">
+                      {isImage && att.dataUrl ? (
+                        <img
+                          src={att.dataUrl}
+                          alt={att.filename}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5 text-gray-400">
+                          <FileText className="w-9 h-9 text-gray-400" />
+                          <span className="text-[10px] uppercase font-bold text-gray-500">
+                            {att.filename?.split('.').pop() || 'FILE'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Download / Open overlay */}
+                      {att.dataUrl && (
+                        <a
+                          href={att.dataUrl}
+                          download={att.filename}
+                          title={`Download ${att.filename}`}
+                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-medium cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Download</span>
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Meta info */}
+                    <div className="p-3 bg-white border-t border-gray-100 flex flex-col">
+                      <span
+                        className="text-xs font-semibold text-gray-900 truncate"
+                        title={att.filename}
+                      >
+                        {att.filename}
+                      </span>
+                      <span className="text-[11px] text-gray-400 mt-0.5">
+                        {att.size || 'Attachment'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

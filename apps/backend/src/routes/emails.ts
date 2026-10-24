@@ -16,6 +16,18 @@ const scheduleEmailSchema = z.object({
   scheduledAt: z.string().datetime().or(z.string()),
   delaySeconds: z.coerce.number().min(0).default(2),
   hourlyLimit: z.coerce.number().min(1).default(200),
+  attachments: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        filename: z.string(),
+        size: z.string().optional(),
+        contentType: z.string().optional(),
+        dataUrl: z.string().optional(),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 // 1. Schedule one or bulk emails
@@ -49,6 +61,7 @@ emailsRouter.post('/schedule', requireAuth, async (req: Request, res: Response) 
           toAddress,
           subject: parsed.subject,
           body: parsed.body,
+          attachments: parsed.attachments.length > 0 ? (parsed.attachments as any) : undefined,
           scheduledAt: scheduledDate,
           status: 'SCHEDULED',
           delaySeconds: parsed.delaySeconds || env.DELAY_BETWEEN_EMAILS_MS / 1000,

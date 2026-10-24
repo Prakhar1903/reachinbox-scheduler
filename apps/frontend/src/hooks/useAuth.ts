@@ -21,13 +21,16 @@ export function useAuth() {
         const res = await api.get<{ user: User }>('/auth/me');
         return res.data.user;
       } catch (err: any) {
-        if (err.response?.status === 401) {
+        if (err.response?.status === 401 || err.response?.status === 404) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth_token');
+          }
           return null;
         }
         throw err;
       }
     },
-    retry: 1,
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 

@@ -13,6 +13,18 @@ interface EmailRowProps {
   email: EmailItem;
 }
 
+/** Extract a short display name from an email address like "John Doe <john@example.com>" or "john@example.com" */
+function parseRecipientName(toAddress: string): string {
+  // "John Doe <john@example.com>" → "John Doe"
+  const angleMatch = toAddress.match(/^([^<]+)<[^>]+>$/);
+  if (angleMatch) return angleMatch[1].trim();
+  // "john.doe@example.com" → "John Doe"
+  const localPart = toAddress.split('@')[0];
+  return localPart
+    .replace(/[._-]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
   const toggleStarMutation = useToggleStarEmail();
 
@@ -20,6 +32,8 @@ export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const recipientName = parseRecipientName(email.toAddress);
 
   const handleToggleStar = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -33,19 +47,19 @@ export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
   };
 
   return (
-    <div className="group border-b border-[#F0F2F5] hover:bg-[#F9FAFB] transition-colors flex items-center px-6 py-3.5 gap-4 cursor-pointer text-sm">
-      {/* Recipient column */}
+    <div className="group border-b border-[#F0F2F5] hover:bg-[#F8FAFB] transition-colors flex items-center px-8 py-5 gap-6 cursor-pointer">
+      {/* Recipient column — fixed width, bold, Figma "To: Sarah Wilson" style */}
       <Link
         href={`/dashboard/${email.id}`}
-        className="w-48 shrink-0 font-medium text-gray-900 truncate"
+        className="w-44 shrink-0 text-sm font-semibold text-gray-900 truncate"
       >
-        To: {email.toAddress}
+        To: {recipientName}
       </Link>
 
-      {/* Status Badge + Subject + Body Excerpt */}
+      {/* Badge + Subject + Body excerpt — single flowing line */}
       <Link
         href={`/dashboard/${email.id}`}
-        className="flex-1 flex items-center gap-3 min-w-0"
+        className="flex-1 flex items-center gap-3 min-w-0 text-sm"
       >
         <Badge
           status={email.status}
@@ -53,39 +67,45 @@ export const EmailRow: React.FC<EmailRowProps> = ({ email }) => {
           className="shrink-0"
         />
 
-        <div className="flex-1 truncate">
-          <span className="font-semibold text-gray-900 mr-2">
+        <div className="flex-1 min-w-0 truncate">
+          <span className="font-semibold text-gray-900">
             {email.subject}
           </span>
-          <span className="text-gray-500 font-normal">
-            - {plainBodyExcerpt.slice(0, 90)}...
+          <span className="text-gray-400 font-normal ml-2">
+            -{' '}
+            {plainBodyExcerpt.length > 0
+              ? plainBodyExcerpt.slice(0, 100)
+              : 'No preview available'}
+            {plainBodyExcerpt.length > 100 ? '...' : ''}
           </span>
         </div>
       </Link>
 
-      {/* Ethereal preview link if sent */}
+      {/* Ethereal preview link — only visible when sent */}
       {email.etherealUrl && (
         <a
           href={email.etherealUrl}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="Open in Ethereal Fake SMTP Preview"
-          className="text-xs text-[#029E4D] hover:underline flex items-center gap-1 shrink-0 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200"
+          title="View email in Ethereal SMTP preview"
+          className="shrink-0 text-xs text-[#029E4D] hover:underline flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 opacity-0 group-hover:opacity-100 transition-opacity"
         >
-          <span>Preview Ethereal</span>
+          <span>Preview</span>
           <ExternalLink className="w-3 h-3" />
         </a>
       )}
 
-      {/* Star button */}
+      {/* Star toggle — appears on hover or when starred */}
       <button
         type="button"
         onClick={handleToggleStar}
         disabled={toggleStarMutation.isPending}
         className={cn(
-          'p-1 shrink-0 transition-colors',
-          email.isStarred ? 'text-amber-400' : 'text-gray-300 hover:text-amber-400'
+          'p-1 shrink-0 transition-all',
+          email.isStarred
+            ? 'text-amber-400 opacity-100'
+            : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-amber-400'
         )}
       >
         <Star className={cn('w-4 h-4', email.isStarred && 'fill-amber-400')} />

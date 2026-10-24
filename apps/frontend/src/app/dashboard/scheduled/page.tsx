@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useEmails, useSearchEmails } from '@/hooks/useEmails';
-import { TopBar } from '@/components/layout/TopBar';
+import { TopBar, EmailFilter, SortOrder } from '@/components/layout/TopBar';
 import { EmailRow } from '@/components/email/EmailRow';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function ScheduledEmailsPage() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<EmailFilter>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+
   const { data: regularData, isLoading: regularLoading } = useEmails('SCHEDULED');
   const { data: searchResults, isLoading: searchLoading } = useSearchEmails(
     searchQuery,
@@ -17,9 +20,29 @@ export default function ScheduledEmailsPage() {
   const isSearching = Boolean(searchQuery && searchQuery.trim().length > 0);
   const isLoading = isSearching ? searchLoading : regularLoading;
 
-  const displayedEmails = isSearching
+  const rawEmails = isSearching
     ? searchResults?.emails || []
     : regularData?.emails || [];
+
+  const displayedEmails = useMemo(() => {
+    let list = [...rawEmails];
+
+    // Filter
+    if (filter === 'starred') {
+      list = list.filter((e) => e.isStarred);
+    } else if (filter === 'archived') {
+      list = list.filter((e) => e.isArchived);
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      const timeA = new Date(a.scheduledAt || a.createdAt).getTime();
+      const timeB = new Date(b.scheduledAt || b.createdAt).getTime();
+      return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+    });
+
+    return list;
+  }, [rawEmails, filter, sortOrder]);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-white">
@@ -27,6 +50,10 @@ export default function ScheduledEmailsPage() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         isSearching={searchLoading}
+        filter={filter}
+        onFilterChange={setFilter}
+        sortOrder={sortOrder}
+        onSortChange={setSortOrder}
       />
 
       <main className="flex-1 flex flex-col">

@@ -7,34 +7,20 @@ import { usePathname } from 'next/navigation';
 import { Clock, Send, ChevronDown, Plus, ExternalLink, Slack, LogOut, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useEmails } from '@/hooks/useEmails';
-import { api } from '@/lib/api';
+import { SlackModal } from './SlackModal';
 import { toast } from 'sonner';
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { data: emailsData } = useEmails('SCHEDULED');
-  const [connectingSlack, setConnectingSlack] = useState(false);
+  const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
 
   const scheduledCount = emailsData?.stats.scheduled ?? 0;
   const sentCount = emailsData?.stats.sent ?? 0;
 
   const isScheduled = pathname.includes('/dashboard/scheduled') || pathname === '/dashboard';
   const isSent = pathname.includes('/dashboard/sent');
-
-  const handleConnectSlack = async () => {
-    try {
-      setConnectingSlack(true);
-      const res = await api.get<{ url: string }>('/slack/install');
-      if (res.data.url) {
-        window.location.href = res.data.url;
-      }
-    } catch (err: any) {
-      toast.error('Could not initiate Slack OAuth: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setConnectingSlack(false);
-    }
-  };
 
   return (
     <aside className="w-64 bg-white border-r border-[#EBEFF2] flex flex-col h-screen fixed left-0 top-0 z-30 select-none">
@@ -165,16 +151,22 @@ export const Sidebar: React.FC = () => {
           {/* Slack Integration */}
           <div className="px-3.5 py-2">
             {user?.hasSlackConnected ? (
-              <div className="flex items-center justify-between text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-md border border-emerald-200">
+              <button
+                type="button"
+                onClick={() => setIsSlackModalOpen(true)}
+                title="Manage Slack Integration"
+                className="w-full flex items-center justify-between text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-md border border-emerald-200 transition-colors cursor-pointer"
+              >
                 <span className="flex items-center gap-1.5 font-medium">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Slack Connected
                 </span>
-              </div>
+                <span className="text-[10px] text-emerald-600 font-semibold uppercase">Manage</span>
+              </button>
             ) : (
               <button
-                onClick={handleConnectSlack}
-                disabled={connectingSlack}
-                className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-700 bg-gray-100 hover:bg-gray-200 px-2.5 py-2 rounded-md font-medium transition-colors"
+                type="button"
+                onClick={() => setIsSlackModalOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-700 bg-gray-100 hover:bg-gray-200 px-2.5 py-2 rounded-md font-medium transition-colors cursor-pointer"
               >
                 <Slack className="w-3.5 h-3.5 text-purple-600" />
                 <span>Connect Slack</span>
@@ -194,6 +186,12 @@ export const Sidebar: React.FC = () => {
           <span>Log Out</span>
         </button>
       </div>
+
+      {/* Slack Connection & Testing Modal */}
+      <SlackModal
+        isOpen={isSlackModalOpen}
+        onClose={() => setIsSlackModalOpen(false)}
+      />
     </aside>
   );
 };

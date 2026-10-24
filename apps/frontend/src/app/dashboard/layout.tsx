@@ -7,11 +7,18 @@ import { Sidebar } from '@/components/layout/Sidebar';
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, error } = useAuth();
+  const [timedOut, setTimedOut] = React.useState(false);
 
   useEffect(() => {
-    // Only redirect if query is completely done loading and definitely not authenticated
-    if (!isLoading && !isAuthenticated) {
+    const timer = setTimeout(() => {
+      setTimedOut(true);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if ((!isLoading && !isAuthenticated) || (timedOut && !isAuthenticated)) {
       if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
         if (!urlParams.get('token')) {
@@ -21,9 +28,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         router.push('/login');
       }
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, timedOut, router]);
 
-  if (isLoading) {
+  if (isLoading && !timedOut) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFBFC]">
         <div className="flex flex-col items-center gap-3">

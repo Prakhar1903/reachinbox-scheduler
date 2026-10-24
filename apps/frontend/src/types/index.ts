@@ -17,6 +17,14 @@ export interface Sender {
 
 export type EmailStatus = 'SCHEDULED' | 'SENDING' | 'SENT' | 'FAILED' | 'RATE_LIMITED';
 
+export interface Attachment {
+  id?: string;
+  filename: string;
+  size?: string;
+  contentType?: string;
+  dataUrl?: string;
+}
+
 export interface EmailItem {
   id: string;
   userId: string;
@@ -34,6 +42,7 @@ export interface EmailItem {
   retryCount: number;
   isStarred?: boolean;
   isArchived?: boolean;
+  attachments?: Attachment[] | null;
   errorMessage?: string | null;
   createdAt: string;
   sender?: Sender;

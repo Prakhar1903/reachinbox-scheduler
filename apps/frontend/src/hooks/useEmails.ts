@@ -54,6 +54,12 @@ export function useScheduleEmails() {
       scheduledAt: string;
       delaySeconds: number;
       hourlyLimit: number;
+      attachments?: {
+        filename: string;
+        size?: string;
+        contentType?: string;
+        dataUrl?: string;
+      }[];
     }) => {
       const res = await api.post('/api/emails/schedule', payload);
       return res.data;

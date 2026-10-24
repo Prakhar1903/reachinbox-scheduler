@@ -63,6 +63,7 @@ model Email {
   errorMessage String?     @db.Text
   isStarred    Boolean     @default(false)
   isArchived   Boolean     @default(false)
+  attachments  Json?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
