@@ -16,6 +16,13 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      localStorage.removeItem('auth_token');
+      toast.error('Authentication failed: ' + error);
+      return;
+    }
+
     // If token is in URL (from OAuth redirect), store it
     const token = searchParams.get('token');
     if (token) {
@@ -23,11 +30,6 @@ function LoginContent() {
       refetch().then(() => {
         router.push('/dashboard');
       });
-    }
-
-    const error = searchParams.get('error');
-    if (error) {
-      toast.error('Authentication failed: ' + error);
     }
   }, [searchParams, refetch, router]);
 

@@ -24,20 +24,38 @@ if (hasGoogleCreds) {
       },
       async (_accessToken, _refreshToken, profile, done) => {
         try {
-          const email = profile.emails?.[0]?.value || `${profile.id}@gmail.com`;
+          const email = (profile.emails?.[0]?.value || `${profile.id}@gmail.com`).toLowerCase();
           const name = profile.displayName || profile.name?.givenName || 'Google User';
           const avatarUrl = profile.photos?.[0]?.value || null;
 
-          const user = await prisma.user.upsert({
-            where: { googleId: profile.id },
-            update: { name, avatarUrl, email },
-            create: {
-              googleId: profile.id,
-              email,
-              name,
-              avatarUrl,
+          // Seamless account linking: check if user exists by email OR googleId to avoid unique constraints
+          const existingUser = await prisma.user.findFirst({
+            where: {
+              OR: [{ email }, { googleId: profile.id }],
             },
           });
+
+          let user;
+          if (existingUser) {
+            user = await prisma.user.update({
+              where: { id: existingUser.id },
+              data: {
+                googleId: profile.id,
+                email,
+                name: existingUser.name || name,
+                avatarUrl: avatarUrl || existingUser.avatarUrl,
+              },
+            });
+          } else {
+            user = await prisma.user.create({
+              data: {
+                googleId: profile.id,
+                email,
+                name,
+                avatarUrl,
+              },
+            });
+          }
 
           return done(null, {
             userId: user.id,
@@ -47,6 +65,7 @@ if (hasGoogleCreds) {
             avatarUrl: user.avatarUrl,
           } as any);
         } catch (error) {
+          console.error('[Google OAuth Strategy Error]:', error);
           return done(error as Error, undefined);
         }
       }
