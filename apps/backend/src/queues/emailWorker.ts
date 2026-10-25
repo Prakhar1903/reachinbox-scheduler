@@ -67,14 +67,16 @@ export function createEmailWorker(): Worker<EmailJobData> {
           `[EmailWorker] Hourly limit of ${hourlyLimit} reached for sender ${sender.address}. Rescheduling email ${emailId} to next hour (${delayMs}ms delay).`
         );
 
-        // Update database status to RATE_LIMITED
+        // Update database status to RATE_LIMITED and scheduledAt to next hour
         await prisma.email.update({
           where: { id: emailId },
           data: {
             status: 'RATE_LIMITED',
+            scheduledAt: nextHourDate,
             retryCount: { increment: 1 },
           },
         });
+        await updateEmailStatusInIndex(emailId, 'RATE_LIMITED');
 
         // Re-enqueue job into next hour window (order preserved by timestamp)
         await emailQueue.add(
@@ -135,6 +137,62 @@ export function createEmailWorker(): Worker<EmailJobData> {
 
         console.log(`[EmailWorker] ✅ Email ${emailId} successfully sent! Preview URL: ${etherealUrl}`);
       } catch (sendError: any) {
+        const isSmtpRateLimited =
+          sendError?.message?.includes('429') ||
+          sendError?.message?.toLowerCase().includes('rate limit');
+
+        if (isSmtpRateLimited) {
+          console.warn(`[EmailWorker] ⚠️ SMTP provider rate limited for ${sender.address}. Auto-requeuing in 30s.`);
+          await prisma.email.update({
+            where: { id: emailId },
+            data: {
+              status: 'RATE_LIMITED',
+              errorMessage: 'SMTP provider rate limited: cooling down for 30s',
+            },
+          });
+          await updateEmailStatusInIndex(emailId, 'RATE_LIMITED');
+
+          await emailQueue.add(
+            'send-email',
+            { emailId },
+            {
+              jobId: `${email.id}:smtp_cooldown:${Date.now()}`,
+              delay: 30000,
+            }
+          );
+          return;
+        }
+
+        const isTransientNetworkError =
+          sendError?.message?.toLowerCase().includes('timeout') ||
+          sendError?.message?.includes('ETIMEDOUT') ||
+          sendError?.message?.includes('ECONNRESET') ||
+          sendError?.code === 'ETIMEDOUT' ||
+          sendError?.code === 'ECONNRESET';
+
+        if (isTransientNetworkError && (email.retryCount || 0) < 3) {
+          console.warn(
+            `[EmailWorker] ⚠️ Transient network error sending email ${emailId}: ${sendError.message}. Retrying attempt ${(email.retryCount || 0) + 1}/3 in 5s.`
+          );
+          await prisma.email.update({
+            where: { id: emailId },
+            data: {
+              status: 'SCHEDULED',
+              retryCount: { increment: 1 },
+              errorMessage: `Retrying after transient error: ${sendError.message}`,
+            },
+          });
+          await emailQueue.add(
+            'send-email',
+            { emailId },
+            {
+              jobId: `${email.id}:retry:${Date.now()}`,
+              delay: 5000,
+            }
+          );
+          return;
+        }
+
         console.error(`[EmailWorker] ❌ Failed to send email ${emailId}:`, sendError);
 
         await prisma.email.update({

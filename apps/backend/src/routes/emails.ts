@@ -141,7 +141,7 @@ emailsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
     const where: any = { userId };
     if (status && status !== 'ALL') {
       if (status === 'SCHEDULED') {
-        where.status = { in: ['SCHEDULED', 'RATE_LIMITED', 'SENDING'] };
+        where.status = { in: ['SCHEDULED', 'RATE_LIMITED', 'SENDING', 'FAILED'] };
       } else if (status === 'SENT') {
         where.status = 'SENT';
       } else {
@@ -191,7 +191,8 @@ emailsRouter.get('/', requireAuth, async (req: Request, res: Response) => {
     const scheduledCount =
       (statusCounts['SCHEDULED'] || 0) +
       (statusCounts['RATE_LIMITED'] || 0) +
-      (statusCounts['SENDING'] || 0);
+      (statusCounts['SENDING'] || 0) +
+      (statusCounts['FAILED'] || 0);
     const sentCount = statusCounts['SENT'] || 0;
 
     let totalCount = 0;

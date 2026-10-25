@@ -80,7 +80,11 @@ export async function searchEmails({
   if (isElasticsearchAvailable()) {
     const filterClauses: any[] = [{ term: { userId } }];
     if (status) {
-      filterClauses.push({ term: { status } });
+      if (status === 'SCHEDULED') {
+        filterClauses.push({ terms: { status: ['SCHEDULED', 'RATE_LIMITED', 'SENDING', 'FAILED'] } });
+      } else {
+        filterClauses.push({ term: { status } });
+      }
     }
 
     const mustClauses: any[] = [];
@@ -123,7 +127,11 @@ export async function searchEmails({
   try {
     const whereClause: any = { userId };
     if (status) {
-      whereClause.status = status;
+      if (status === 'SCHEDULED') {
+        whereClause.status = { in: ['SCHEDULED', 'RATE_LIMITED', 'SENDING', 'FAILED'] };
+      } else {
+        whereClause.status = status;
+      }
     }
     if (query && query.trim().length > 0) {
       const q = query.trim();
