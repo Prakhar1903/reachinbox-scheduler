@@ -49,6 +49,14 @@ export async function checkAndIncrementHourlyRate(
   return { allowed: true, currentCount };
 }
 
+export async function decrementHourlyRate(senderId: string): Promise<void> {
+  const key = getHourlyRateKey(senderId);
+  const current = await redisCommandClient.get(key);
+  if (current && parseInt(current, 10) > 0) {
+    await redisCommandClient.decr(key);
+  }
+}
+
 export async function getCurrentHourlyUsage(senderId: string): Promise<number> {
   const key = getHourlyRateKey(senderId);
   const count = await redisCommandClient.get(key);

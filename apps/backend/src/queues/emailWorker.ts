@@ -4,7 +4,7 @@ import { prisma } from '../config/db';
 import { env } from '../config/env';
 import { EMAIL_QUEUE_NAME, EmailJobData, emailQueue } from './emailQueue';
 import { acquireSenderSlot } from './senderLock';
-import { checkAndIncrementHourlyRate, getMsUntilNextHour } from './rateLimiter';
+import { checkAndIncrementHourlyRate, decrementHourlyRate, getMsUntilNextHour } from './rateLimiter';
 import { sendEmailViaEthereal } from '../services/emailService';
 import { updateEmailStatusInIndex, indexEmail } from '../services/searchService';
 import { notifyRateLimitHit } from '../services/slackService';
@@ -113,6 +113,7 @@ export function createEmailWorker(): Worker<EmailJobData> {
 
       if (updateResult.count === 0) {
         console.warn(`[EmailWorker] Email ${emailId} status changed concurrently. Skipping send.`);
+        await decrementHourlyRate(sender.id);
         return;
       }
 
@@ -137,6 +138,9 @@ export function createEmailWorker(): Worker<EmailJobData> {
 
         console.log(`[EmailWorker] ✅ Email ${emailId} successfully sent! Preview URL: ${etherealUrl}`);
       } catch (sendError: any) {
+        // Rollback hourly quota count since email was not sent
+        await decrementHourlyRate(sender.id);
+
         const isSmtpRateLimited =
           sendError?.message?.includes('429') ||
           sendError?.message?.toLowerCase().includes('rate limit');
