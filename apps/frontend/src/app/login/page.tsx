@@ -14,6 +14,48 @@ function LoginContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'ready' | 'waking' | 'degraded'>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const probeBackend = async () => {
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(`${API_BASE_URL}/health`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        clearTimeout(abortTimer);
+        if (cancelled) return;
+        if (res.ok) {
+          const body = await res.json().catch(() => null);
+          if (body?.database?.startsWith('error')) {
+            setBackendStatus('degraded');
+          } else {
+            setBackendStatus('ready');
+          }
+          return;
+        }
+        setBackendStatus('waking');
+      } catch {
+        clearTimeout(abortTimer);
+        if (cancelled) return;
+        setBackendStatus('waking');
+      }
+      if (!cancelled) {
+        retryTimer = setTimeout(probeBackend, 6000);
+      }
+    };
+
+    void probeBackend();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const error = searchParams.get('error');
@@ -47,11 +89,20 @@ function LoginContent() {
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      toast.error('Please enter a valid email address.');
+      return;
+    }
+    if (!password.trim()) {
+      toast.error('Please enter a password.');
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await api.post<{ token: string; user: any }>('/auth/login', {
-        email: email.trim(),
-        password: password,
+        email: trimmedEmail,
+        password,
       });
       if (res.data.token) {
         localStorage.setItem('auth_token', res.data.token);
@@ -60,7 +111,13 @@ function LoginContent() {
         router.push('/dashboard');
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Login failed');
+      const isNetworkOrTimeout = !err.response || err.code === 'ECONNABORTED';
+      toast.error(
+        err.response?.data?.error ||
+          (isNetworkOrTimeout
+            ? 'Backend server is waking up or unreachable on Render. Please wait ~30 seconds and try again.'
+            : 'Login failed')
+      );
     } finally {
       setIsLoading(false);
     }
@@ -69,9 +126,26 @@ function LoginContent() {
   return (
     <div className="w-full max-w-[420px] bg-white rounded-3xl p-10 shadow-xs border border-gray-100 flex flex-col items-center">
       {/* Title */}
-      <h1 className="text-3xl font-extrabold text-[#171A21] mb-8 tracking-tight">
+      <h1 className="text-3xl font-extrabold text-[#171A21] mb-4 tracking-tight">
         Login
       </h1>
+
+      {backendStatus === 'waking' && (
+        <div className="w-full mb-5 rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5 text-xs text-amber-800 font-medium text-center">
+          Backend is waking up from Render sleep (can take ~30–50s on free tier). Retrying automatically…
+        </div>
+      )}
+      {backendStatus === 'degraded' && (
+        <div className="w-full mb-5 rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-xs text-red-700 font-medium text-center">
+          Backend database is offline. Check Render PostgreSQL configuration.
+        </div>
+      )}
+      {backendStatus === 'ready' && (
+        <div className="mb-4" />
+      )}
+      {backendStatus === 'checking' && (
+        <div className="mb-4" />
+      )}
 
       {/* Real Google OAuth Login Button matching Figma */}
       <button

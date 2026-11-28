@@ -86,21 +86,36 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 let workerInstance: ReturnType<typeof createEmailWorker> | null = null;
 
+async function runBackgroundInit() {
+  try {
+    await initElasticsearch();
+  } catch (err) {
+    console.error('[Startup] Elasticsearch init skipped:', err);
+  }
+
+  try {
+    await ensureDefaultSenders();
+  } catch (err) {
+    console.error('[Startup] Default sender seeding error:', err);
+  }
+
+  try {
+    workerInstance = createEmailWorker();
+    console.log(`[Worker] Started BullMQ worker with concurrency=${env.WORKER_CONCURRENCY}`);
+  } catch (err) {
+    console.error('[Startup] BullMQ worker failed to start:', err);
+  }
+
+  recoverPendingScheduledEmails().catch((err) => {
+    console.error('[Recovery] Background recovery error:', err);
+  });
+}
+
 async function bootstrap() {
   try {
     console.log('🚀 Starting ReachInbox Email Scheduler Service...');
 
-    // 1. Initialize Elasticsearch index
-    await initElasticsearch();
-
-    // 2. Ensure test Ethereal senders are seeded
-    await ensureDefaultSenders();
-
-    // 3. Start BullMQ Worker
-    workerInstance = createEmailWorker();
-    console.log(`[Worker] Started BullMQ worker with concurrency=${env.WORKER_CONCURRENCY}`);
-
-    // 4. Start Express server immediately
+    // Bind HTTP server immediately so platform health checks & cold-start wakes succeed fast
     const server = app.listen(env.PORT, () => {
       console.log(`\n======================================================`);
       console.log(`✨ Backend API running at http://localhost:${env.PORT}`);
@@ -109,10 +124,8 @@ async function bootstrap() {
       console.log(`======================================================\n`);
     });
 
-    // 5. Recover any scheduled/rate-limited emails (idempotent restart safety) in background
-    recoverPendingScheduledEmails().catch((err) => {
-      console.error('[Recovery] Background recovery error:', err);
-    });
+    // Run external dependency initialization asynchronously without blocking port binding
+    void runBackgroundInit();
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {

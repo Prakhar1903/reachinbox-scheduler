@@ -3,6 +3,7 @@ import { env } from './env';
 
 export const esClient = new Client({
   node: env.ELASTICSEARCH_URL,
+  requestTimeout: 2000,
 });
 
 export const EMAILS_INDEX = 'reachinbox_emails';

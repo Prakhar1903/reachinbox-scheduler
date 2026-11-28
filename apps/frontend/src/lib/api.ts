@@ -9,6 +9,7 @@ export const API_BASE_URL =
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // Auto send httpOnly cookies
+  timeout: 25000, // Prevent infinite spinner when Render cold-starts or times out
 });
 
 // Attach Authorization header if token exists in localStorage
