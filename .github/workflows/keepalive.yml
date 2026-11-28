@@ -1,0 +1,20 @@
+name: Supabase & Backend Keepalive
+
+on:
+  schedule:
+    # Run every 4 days to keep Supabase free-tier Postgres active (< 7-day auto-pause)
+    - cron: '17 6 */4 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake Render backend and ping Supabase health endpoint
+        run: |
+          BODY=$(curl -fsS --max-time 90 --retry 4 --retry-delay 15 --retry-all-errors \
+            https://reachinbox-scheduler-g593.onrender.com/health)
+          echo "$BODY"
+          echo "$BODY" | grep -q '"database":"connected"'
